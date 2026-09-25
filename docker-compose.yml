@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  kesh-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kesh_container
+    restart: always
+    ports:
+      - "80:80" # Если 80 порт занят, можно изменить на "8080:80"
+    networks:
+      - kesh_network
+
+networks:
+  kesh_network:
+    driver: bridge
