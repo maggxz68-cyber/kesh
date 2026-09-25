@@ -1,10 +1,12 @@
 import React, { useRef, useState } from 'react';
 import { useStore, exportToCSV, exportToJSON, formatCurrency } from '../store';
+import { useAuthStore } from '../store/auth';
 import { TransactionType, PaymentMethod, Currency, Transaction } from '../types';
-import { Download, Upload, Trash2, Database, RefreshCw, Check, AlertTriangle, DollarSign } from 'lucide-react';
+import { Download, Upload, Trash2, Database, RefreshCw, Check, AlertTriangle, DollarSign, LogOut, User } from 'lucide-react';
 
 export default function SettingsPage() {
   const { accounts, categories, transactions, addTransaction, addAccount, setDarkMode, darkMode, exchangeRates, baseCurrency, setBaseCurrency, updateExchangeRate, refreshRates, familyMembers, currentUserId, setCurrentUser } = useStore();
+  const { currentUser, logout } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<string>('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -131,6 +133,30 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 pb-20 lg:pb-0 max-w-3xl">
       <h2 className="text-2xl font-bold">Настройки</h2>
+
+      {/* User info */}
+      {currentUser && (
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-4 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                <User size={24} />
+              </div>
+              <div>
+                <p className="font-semibold">{currentUser.name}</p>
+                <p className="text-sm opacity-80">@{currentUser.login} · {currentUser.role}</p>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm flex items-center gap-2 transition-colors"
+            >
+              <LogOut size={16} />
+              Выйти
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
