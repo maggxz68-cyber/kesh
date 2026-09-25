@@ -1,11 +1,29 @@
-# Используем легкий и надежный образ Nginx на базе Alpine Linux
+# Этап 1: Сборка приложения через Node.js
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Копируем файлы зависимостей (package.json и package-lock.json)
+COPY package*.json ./
+
+# Устанавливаем зависимости
+RUN npm install
+
+# Копируем весь исходный код
+COPY . .
+
+# Собираем проект (результат будет в папке dist)
+RUN npm run build
+
+# Этап 2: Раздача собранного приложения через легкий Nginx
 FROM nginx:alpine
 
-# Копируем содержимое папки public в стандартную директорию раздачи статики Nginx
-COPY public /usr/share/nginx/html
+# Копируем собранные файлы из этапа builder в директорию Nginx
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Открываем 80 порт
+# Копируем кастомную конфигурацию Nginx (для корректной работы React Router)
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 EXPOSE 80
 
-# Запускаем Nginx в foreground-режиме (чтобы контейнер не завершался)
 CMD ["nginx", "-g", "daemon off;"]
