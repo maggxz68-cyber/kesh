@@ -5,10 +5,10 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, LineChart, Line
 } from 'recharts';
-import { Download, FileSpreadsheet } from 'lucide-react';
+import { Download, FileSpreadsheet, Users } from 'lucide-react';
 
 export default function Reports() {
-  const { transactions, accounts, categories } = useStore();
+  const { transactions, accounts, categories, familyMembers, convertToBase, baseCurrency, getBudgetProgress } = useStore();
   const [periodFrom, setPeriodFrom] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
@@ -313,6 +313,84 @@ export default function Reports() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* By member report */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+        <h3 className="font-semibold mb-3 flex items-center gap-2">
+          <Users size={16} /> Отчёт по членам семьи
+        </h3>
+        {(() => {
+          const memberData = new Map<string, { name: string; income: number; expense: number; count: number; avatar: string; color: string }>();
+          filteredTx.forEach(t => {
+            const member = familyMembers.find(m => m.userId === t.createdById);
+            if (!member) return;
+            const existing = memberData.get(t.createdById) || { name: member.name, income: 0, expense: 0, count: 0, avatar: member.avatar, color: member.color };
+            const amount = convertToBase(t.amount, t.currency);
+            if (t.type === TransactionType.INCOME) existing.income += amount;
+            if (t.type === TransactionType.EXPENSE) existing.expense += amount;
+            existing.count += 1;
+            memberData.set(t.createdById, existing);
+          });
+          const data = Array.from(memberData.values());
+          if (data.length === 0) return <p className="text-gray-400 text-center py-4">Нет данных</p>;
+          return (
+            <div className="space-y-3">
+              {data.map(m => (
+                <div key={m.name} className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                  <span className="text-2xl">{m.avatar}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{m.name}</p>
+                    <p className="text-xs text-gray-500">{m.count} операций</p>
+                  </div>
+                  <div className="text-right text-sm">
+                    <p className="text-green-600">+{formatCurrency(m.income, baseCurrency)}</p>
+                    <p className="text-red-600">-{formatCurrency(m.expense, baseCurrency)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Budget report */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+        <h3 className="font-semibold mb-3">Отчёт по бюджетам (план/факт)</h3>
+        {(() => {
+          const progress = getBudgetProgress();
+          if (progress.length === 0) return <p className="text-gray-400 text-center py-4">Нет бюджетов</p>;
+          return (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-left">
+                    <th className="pb-2 font-medium text-gray-500">Категория</th>
+                    <th className="pb-2 font-medium text-gray-500 text-right">План</th>
+                    <th className="pb-2 font-medium text-gray-500 text-right">Факт</th>
+                    <th className="pb-2 font-medium text-gray-500 text-right">Остаток</th>
+                    <th className="pb-2 font-medium text-gray-500 text-right">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {progress.map(p => (
+                    <tr key={p.budgetId} className="border-b border-gray-100 dark:border-gray-700/50">
+                      <td className="py-2">{p.budgetName}</td>
+                      <td className="py-2 text-right">{formatCurrency(p.planned, p.currency)}</td>
+                      <td className="py-2 text-right">{formatCurrency(p.actual, p.currency)}</td>
+                      <td className={`py-2 text-right ${p.remaining >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(p.remaining, p.currency)}
+                      </td>
+                      <td className={`py-2 text-right font-medium ${p.status === 'ok' ? 'text-green-600' : p.status === 'warning' ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {p.percentage.toFixed(0)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

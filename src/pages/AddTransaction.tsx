@@ -126,6 +126,9 @@ export default function AddTransaction() {
         })),
       } : null,
       tags: [],
+      isPrivate: false,
+      createdById: '',
+      recurringRuleId: null,
     };
 
     if (isEdit && existingTx) {

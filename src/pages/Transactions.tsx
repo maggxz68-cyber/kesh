@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 export default function Transactions() {
   const {
-    transactions, accounts, categories, filters,
+    transactions, accounts, categories, familyMembers, filters,
     setFilters, resetFilters, getFilteredTransactions, deleteTransaction
   } = useStore();
   const navigate = useNavigate();
@@ -181,6 +181,19 @@ export default function Transactions() {
                 <option value="">Все</option>
                 <option value="true">С чеком</option>
                 <option value="false">Без чека</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Автор</label>
+              <select
+                value={filters.userId || ''}
+                onChange={e => { setFilters({ userId: e.target.value || null }); setPage(1); }}
+                className="w-full px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+              >
+                <option value="">Все</option>
+                {familyMembers.map(m => (
+                  <option key={m.userId} value={m.userId}>{m.avatar} {m.name}</option>
+                ))}
               </select>
             </div>
           </div>

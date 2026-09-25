@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useStore } from './store';
-import { LayoutDashboard, ArrowRightLeft, PlusCircle, Receipt, FolderTree, Wallet, BarChart3, Settings, Sun, Moon, Menu, X } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, PlusCircle, Receipt, FolderTree, Wallet, BarChart3, Settings, Sun, Moon, Menu, X, Target, Repeat, Users } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 import AddTransaction from './pages/AddTransaction';
@@ -10,21 +10,26 @@ import Categories from './pages/Categories';
 import Accounts from './pages/Accounts';
 import Reports from './pages/Reports';
 import SettingsPage from './pages/Settings';
-import { useState } from 'react';
+import Budgets from './pages/Budgets';
+import Recurring from './pages/Recurring';
+import Family from './pages/Family';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Дашборд' },
   { to: '/transactions', icon: ArrowRightLeft, label: 'Транзакции' },
   { to: '/add', icon: PlusCircle, label: 'Добавить' },
+  { to: '/budgets', icon: Target, label: 'Бюджеты' },
+  { to: '/recurring', icon: Repeat, label: 'Регулярные' },
   { to: '/receipts', icon: Receipt, label: 'Чеки' },
   { to: '/categories', icon: FolderTree, label: 'Категории' },
   { to: '/accounts', icon: Wallet, label: 'Счета' },
   { to: '/reports', icon: BarChart3, label: 'Отчёты' },
+  { to: '/family', icon: Users, label: 'Семья' },
   { to: '/settings', icon: Settings, label: 'Настройки' },
 ];
 
 function Layout() {
-  const { darkMode, setDarkMode, init, initialized } = useStore();
+  const { darkMode, setDarkMode, init, initialized, familyMembers, currentUserId } = useStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -40,6 +45,8 @@ function Layout() {
   }, [darkMode]);
 
   if (!initialized) return null;
+
+  const currentMember = familyMembers.find(m => m.userId === currentUserId);
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
@@ -58,18 +65,26 @@ function Layout() {
                 💰 ФинТрекер
               </h1>
             </div>
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            >
-              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
+            <div className="flex items-center gap-2">
+              {currentMember && (
+                <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm">
+                  <span>{currentMember.avatar}</span>
+                  <span className="text-xs text-gray-600 dark:text-gray-400">{currentMember.name.split(' ')[0]}</span>
+                </div>
+              )}
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+            </div>
           </div>
         </header>
 
         <div className="flex">
           {/* Sidebar - Desktop */}
-          <aside className="hidden lg:flex flex-col w-56 min-h-[calc(100vh-3.5rem)] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-3 gap-1 sticky top-14">
+          <aside className="hidden lg:flex flex-col w-56 min-h-[calc(100vh-3.5rem)] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-3 gap-1 sticky top-14 overflow-y-auto">
             {navItems.map(item => (
               <NavLink
                 key={item.to}
@@ -117,16 +132,19 @@ function Layout() {
           )}
 
           {/* Main content */}
-          <main className="flex-1 p-4 lg:p-6 min-h-[calc(100vh-3.5rem)] overflow-y-auto">
+          <main className="flex-1 p-4 lg:p-6 min-h-[calc(100vh-3.5rem)] overflow-y-auto pb-20 lg:pb-6">
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/transactions" element={<Transactions />} />
               <Route path="/add" element={<AddTransaction />} />
               <Route path="/add/:id" element={<AddTransaction />} />
+              <Route path="/budgets" element={<Budgets />} />
+              <Route path="/recurring" element={<Recurring />} />
               <Route path="/receipts" element={<Receipts />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/family" element={<Family />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>

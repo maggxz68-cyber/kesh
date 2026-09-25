@@ -29,7 +29,7 @@ export default function Accounts() {
       updateAccount(editingId, { name: form.name, type: form.type, currency: form.currency });
       setEditingId(null);
     } else {
-      addAccount({ name: form.name, type: form.type, currency: form.currency, balance: form.balance });
+      addAccount({ name: form.name, type: form.type, currency: form.currency, balance: form.balance, isShared: true });
     }
     setForm({ name: '', type: AccountType.CARD, currency: Currency.RUB, balance: 0 });
     setShowForm(false);
