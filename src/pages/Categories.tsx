@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store';
+import { useAuthStore } from '../store/auth';
 import { TransactionType } from '../types';
 import { Plus, Edit3, Trash2, X, Save } from 'lucide-react';
 
@@ -28,11 +29,12 @@ export default function Categories() {
 
   const handleSubmit = () => {
     if (!form.name.trim()) return;
+    const { currentFamilyId } = useAuthStore.getState();
     if (editingId) {
       updateCategory(editingId, form);
       setEditingId(null);
     } else {
-      addCategory(form);
+      addCategory({ ...form, familyId: currentFamilyId || 'family-001' });
     }
     setForm({ name: '', type: TransactionType.EXPENSE, icon: '📦', color: '#6b7280', parentId: null });
     setShowForm(false);

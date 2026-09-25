@@ -17,7 +17,7 @@ export default function Login() {
     setTimeout(() => {
       const success = login(loginValue, password);
       if (success) {
-        window.location.reload();
+        window.location.href = '/';
       } else {
         setError('Неверный логин или пароль');
         setIsLoading(false);
@@ -33,7 +33,7 @@ export default function Login() {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl mb-4">
               <span className="text-3xl">💰</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ФинТрекер</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Семейный бюджет</h1>
             <p className="text-gray-500 dark:text-gray-400 mt-2">
               Войдите в систему для продолжения
             </p>
@@ -91,14 +91,6 @@ export default function Login() {
               {isLoading ? 'Вход...' : 'Войти'}
             </button>
           </form>
-
-          <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Демо-аккаунты:</p>
-            <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-              <p><strong>Админ:</strong> admin / 1968</p>
-              <p><strong>Пользователь:</strong> user / 1234</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>

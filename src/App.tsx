@@ -16,6 +16,7 @@ import Budgets from './pages/Budgets';
 import Recurring from './pages/Recurring';
 import Family from './pages/Family';
 import Login from './pages/Login';
+import SelectFamily from './pages/SelectFamily';
 import AdminPanel from './pages/AdminPanel';
 
 const navItems = [
@@ -54,8 +55,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 function Layout() {
   const { darkMode, setDarkMode, init, initialized, familyMembers, currentUserId } = useStore();
-  const { currentUser, logout } = useAuthStore();
+  const { currentUser, currentFamilyId, families, setCurrentFamily, logout } = useAuthStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showFamilySelector, setShowFamilySelector] = useState(false);
 
   useEffect(() => {
     init();
@@ -73,11 +75,19 @@ function Layout() {
 
   const currentMember = familyMembers.find(m => m.userId === currentUserId);
   const isAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
+  const currentFamily = families.find(f => f.id === currentFamilyId);
+  const userFamilies = families.filter(f => currentUser?.familyIds.includes(f.id));
 
   const filteredNavItems = navItems.filter(item => {
     if (item.adminOnly && !isAdmin) return false;
     return true;
   });
+
+  const handleFamilyChange = (familyId: string) => {
+    setCurrentFamily(familyId);
+    setShowFamilySelector(false);
+    window.location.reload();
+  };
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
@@ -93,10 +103,38 @@ function Layout() {
                 {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
               </button>
               <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                💰 ФинТрекер
+                💰 Семейный бюджет
               </h1>
             </div>
             <div className="flex items-center gap-2">
+              {/* Family selector */}
+              {userFamilies.length > 1 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowFamilySelector(!showFamilySelector)}
+                    className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-sm hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+                  >
+                    <Users size={14} className="text-purple-600 dark:text-purple-300" />
+                    <span className="text-xs text-purple-600 dark:text-purple-300">{currentFamily?.name || 'Семья'}</span>
+                  </button>
+                  {showFamilySelector && (
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-2 z-50">
+                      <p className="px-3 py-1 text-xs text-gray-500 font-medium">Выберите семью</p>
+                      {userFamilies.map(family => (
+                        <button
+                          key={family.id}
+                          onClick={() => handleFamilyChange(family.id)}
+                          className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                            family.id === currentFamilyId ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-300' : ''
+                          }`}
+                        >
+                          {family.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {currentMember && (
                 <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm">
                   <span>{currentMember.avatar}</span>
@@ -178,7 +216,6 @@ function Layout() {
           {/* Main content */}
           <main className="flex-1 p-4 lg:p-6 min-h-[calc(100vh-3.5rem)] overflow-y-auto pb-20 lg:pb-6">
             <Routes>
-              <Route path="/login" element={<Login />} />
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
               <Route path="/add" element={<ProtectedRoute><AddTransaction /></ProtectedRoute>} />
@@ -225,6 +262,29 @@ function Layout() {
 }
 
 export default function App() {
+  const { isAuthenticated, currentFamilyId } = useAuthStore();
+
+  if (!isAuthenticated) {
+    return (
+      <HashRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </HashRouter>
+    );
+  }
+
+  if (!currentFamilyId) {
+    return (
+      <HashRouter>
+        <Routes>
+          <Route path="*" element={<SelectFamily />} />
+        </Routes>
+      </HashRouter>
+    );
+  }
+
   return (
     <HashRouter>
       <Layout />
