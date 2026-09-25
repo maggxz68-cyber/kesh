@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Генератор иконок PWA</title>
+</head>
+<body>
+  <h1>Генератор иконок для PWA</h1>
+  <p>Этот файл генерирует PNG-иконки из SVG. Откройте в браузере и скачайте иконки.</p>
+  
+  <div id="icons"></div>
+  
+  <script>
+    const sizes = [192, 512];
+    const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#3b82f6"/>
+          <stop offset="50%" style="stop-color:#6366f1"/>
+          <stop offset="100%" style="stop-color:#8b5cf6"/>
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+      <g transform="translate(256, 256)">
+        <rect x="-100" y="-60" width="200" height="140" rx="20" fill="white" opacity="0.95"/>
+        <rect x="-100" y="-80" width="200" height="40" rx="20" fill="white" opacity="0.85"/>
+        <circle cx="60" cy="20" r="30" fill="#fbbf24"/>
+        <text x="60" y="30" font-size="30" text-anchor="middle" fill="#92400e" font-family="Arial" font-weight="bold">₽</text>
+      </g>
+      <text x="256" y="440" font-size="42" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-weight="bold">ФинТрекер</text>
+    </svg>`;
+
+    sizes.forEach(size => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      
+      const img = new Image();
+      const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, size, size);
+        URL.revokeObjectURL(url);
+        
+        const pngUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `icon-${size}x${size}.png`;
+        link.href = pngUrl;
+        link.textContent = `Скачать icon-${size}x${size}.png`;
+        link.style.display = 'block';
+        link.style.margin = '10px 0';
+        
+        document.getElementById('icons').appendChild(link);
+        
+        const preview = document.createElement('img');
+        preview.src = pngUrl;
+        preview.style.width = '100px';
+        preview.style.margin = '10px';
+        document.getElementById('icons').appendChild(preview);
+      };
+      
+      img.src = url;
+    });
+  </script>
+</body>
+</html>
