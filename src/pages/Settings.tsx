@@ -318,7 +318,7 @@ export default function SettingsPage() {
       <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
         <h3 className="font-semibold mb-2">О приложении</h3>
         <div className="text-sm text-gray-500 space-y-1">
-          <p>💰 ФинТрекер v2.0 — Семейный финансовый трекер</p>
+          <p>💰 Семейный бюджет v2.0 — Семейный финансовый трекер</p>
           <p>Бюджеты · Регулярные платежи · Мультивалюта · Семейный доступ</p>
           <p>Хранение данных: localStorage браузера</p>
         </div>

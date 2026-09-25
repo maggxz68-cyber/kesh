@@ -12,7 +12,7 @@ const defaultAdmin: User = {
   password: ADMIN_PASSWORD,
   name: 'Администратор',
   role: UserRole.SUPER_ADMIN,
-  familyIds: [],
+  familyIds: ['family-001'],
   createdAt: new Date().toISOString(),
 };
 
@@ -38,6 +38,7 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       currentUser: null,
+      currentFamilyId: null,
       users: [defaultAdmin, defaultUser],
       families: [defaultFamily],
       isAuthenticated: false,
@@ -47,14 +48,27 @@ export const useAuthStore = create<AuthState>()(
           u => u.login === login && u.password === password
         );
         if (user) {
-          set({ currentUser: user, isAuthenticated: true });
+          // Автоматически выбираем первую семью пользователя
+          const firstFamilyId = user.familyIds.length > 0 ? user.familyIds[0] : null;
+          set({ 
+            currentUser: user, 
+            currentFamilyId: firstFamilyId,
+            isAuthenticated: true 
+          });
           return true;
         }
         return false;
       },
 
       logout: () => {
-        set({ currentUser: null, isAuthenticated: false });
+        set({ currentUser: null, currentFamilyId: null, isAuthenticated: false });
+      },
+
+      setCurrentFamily: (familyId: string) => {
+        const { currentUser } = get();
+        if (currentUser && currentUser.familyIds.includes(familyId)) {
+          set({ currentFamilyId: familyId });
+        }
       },
 
       addUser: (userData) => {
@@ -105,6 +119,8 @@ export const useAuthStore = create<AuthState>()(
           families: [...get().families, newFamily],
           users: updatedUsers,
         });
+
+        return newFamily.id;
       },
 
       deleteFamily: (familyId: string) => {

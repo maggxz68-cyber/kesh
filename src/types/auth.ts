@@ -24,15 +24,17 @@ export interface Family {
 
 export interface AuthState {
   currentUser: User | null;
+  currentFamilyId: string | null;
   users: User[];
   families: Family[];
   isAuthenticated: boolean;
   
   login: (login: string, password: string) => boolean;
   logout: () => void;
+  setCurrentFamily: (familyId: string) => void;
   addUser: (user: Omit<User, 'id' | 'createdAt' | 'familyIds'>) => void;
   deleteUser: (userId: string) => void;
-  addFamily: (name: string, ownerId: string) => void;
+  addFamily: (name: string, ownerId: string) => string;
   deleteFamily: (familyId: string) => void;
   addMemberToFamily: (familyId: string, userId: string) => void;
   removeMemberFromFamily: (familyId: string, userId: string) => void;

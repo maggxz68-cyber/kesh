@@ -61,6 +61,7 @@ export enum FamilyRole {
 
 export interface Account {
   id: string;
+  familyId?: string;
   name: string;
   type: AccountType;
   currency: Currency;
@@ -71,6 +72,7 @@ export interface Account {
 
 export interface Category {
   id: string;
+  familyId?: string;
   name: string;
   type: TransactionType;
   parentId: string | null;
@@ -99,6 +101,7 @@ export interface Receipt {
 
 export interface Transaction {
   id: string;
+  familyId?: string;
   type: TransactionType;
   amount: number;
   currency: Currency;
