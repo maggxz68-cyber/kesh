@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuthStore } from '../store/auth';
 import { UserRole } from '../types/auth';
+import { downloadBackup, restoreFromBackup, loadBackupFromFile, FullBackup } from '../utils/backup';
 import { 
   Users, UserPlus, Trash2, Shield, Crown, AlertTriangle, 
   Home, Edit2, Eye, Settings, Database, BarChart3,
-  ChevronRight, LogOut, User
+  ChevronRight, LogOut, User, Download, Upload, CheckCircle, XCircle
 } from 'lucide-react';
 
-type AdminTab = 'overview' | 'users' | 'families' | 'system';
+type AdminTab = 'overview' | 'users' | 'families' | 'system' | 'backup';
 
 export default function AdminPanel() {
   const {
@@ -23,6 +24,9 @@ export default function AdminPanel() {
   const [newFamilyName, setNewFamilyName] = useState('');
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
   const [newMemberId, setNewMemberId] = useState('');
+  const [backupStatus, setBackupStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Проверка прав доступа
   if (!currentUser || currentUser.role !== UserRole.SUPER_ADMIN) {
@@ -69,10 +73,50 @@ export default function AdminPanel() {
     setNewMemberId('');
   };
 
+  const handleDownloadBackup = () => {
+    try {
+      downloadBackup();
+      setBackupStatus({ type: 'success', message: '✅ Бэкап успешно создан и скачан' });
+      setTimeout(() => setBackupStatus(null), 3000);
+    } catch (error) {
+      setBackupStatus({ type: 'error', message: '❌ Ошибка создания бэкапа' });
+      setTimeout(() => setBackupStatus(null), 3000);
+    }
+  };
+
+  const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const backup = await loadBackupFromFile(file);
+    if (!backup) {
+      setBackupStatus({ type: 'error', message: '❌ Ошибка чтения файла бэкапа' });
+      setTimeout(() => setBackupStatus(null), 3000);
+      return;
+    }
+
+    const success = restoreFromBackup(backup);
+    if (success) {
+      setBackupStatus({ type: 'success', message: '✅ Данные успешно восстановлены из бэкапа' });
+      setTimeout(() => {
+        setBackupStatus(null);
+        window.location.reload();
+      }, 2000);
+    } else {
+      setBackupStatus({ type: 'error', message: '❌ Ошибка восстановления данных' });
+      setTimeout(() => setBackupStatus(null), 3000);
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const tabs = [
     { id: 'overview' as AdminTab, label: 'Обзор', icon: BarChart3 },
     { id: 'users' as AdminTab, label: 'Пользователи', icon: Users },
     { id: 'families' as AdminTab, label: 'Семьи', icon: Home },
+    { id: 'backup' as AdminTab, label: 'Бэкап', icon: Database },
     { id: 'system' as AdminTab, label: 'Система', icon: Settings },
   ];
 
@@ -395,6 +439,139 @@ export default function AdminPanel() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Backup Tab */}
+      {activeTab === 'backup' && (
+        <div className="space-y-4">
+          {/* Status message */}
+          {backupStatus && (
+            <div className={`p-4 rounded-xl flex items-start gap-3 ${
+              backupStatus.type === 'success' 
+                ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+            }`}>
+              {backupStatus.type === 'success' ? (
+                <CheckCircle size={20} className="text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+              ) : (
+                <XCircle size={20} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+              )}
+              <p className={`text-sm ${
+                backupStatus.type === 'success' ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
+              }`}>
+                {backupStatus.message}
+              </p>
+            </div>
+          )}
+
+          {/* Download backup */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <Download size={18} className="text-blue-600" /> Создать бэкап
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Создайте полный бэкап всех данных приложения: пользователи, семьи, транзакции, бюджеты, курсы валют и настройки.
+            </p>
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mb-4">
+              <p className="text-xs text-blue-700 dark:text-blue-300 font-medium mb-2">Бэкап включает:</p>
+              <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+                <li>• {users.length} пользователей</li>
+                <li>• {families.length} семей</li>
+                <li>• Все транзакции, бюджеты, категории</li>
+                <li>• Курсы валют и настройки</li>
+              </ul>
+            </div>
+            <button
+              onClick={handleDownloadBackup}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+            >
+              <Download size={18} />
+              Скачать бэкап
+            </button>
+          </div>
+
+          {/* Restore backup */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <Upload size={18} className="text-green-600" /> Восстановить из бэкапа
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Восстановите все данные из ранее созданного бэкапа. 
+              <span className="text-red-600 dark:text-red-400 font-medium"> Все текущие данные будут заменены.</span>
+            </p>
+            
+            {!showRestoreConfirm ? (
+              <button
+                onClick={() => setShowRestoreConfirm(true)}
+                className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+              >
+                <Upload size={18} />
+                Восстановить из файла
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={18} className="text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+                    <div className="text-sm text-yellow-700 dark:text-yellow-300">
+                      <p className="font-medium">Внимание!</p>
+                      <p className="mt-1">
+                        Восстановление из бэкапа полностью заменит все текущие данные. 
+                        Рекомендуется создать бэкап текущих данных перед восстановлением.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <label className="flex-1">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json"
+                      onChange={handleRestoreBackup}
+                      className="hidden"
+                    />
+                    <span className="block w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-center cursor-pointer">
+                      Выбрать файл бэкапа
+                    </span>
+                  </label>
+                  <button
+                    onClick={() => setShowRestoreConfirm(false)}
+                    className="px-6 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Backup info */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+            <h3 className="font-semibold mb-3 flex items-center gap-2">
+              <Database size={18} className="text-purple-600" /> Информация о бэкапах
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Формат:</span>
+                <span className="font-medium">JSON</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Версия:</span>
+                <span className="font-medium">1.0</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Хранение:</span>
+                <span className="font-medium">Локально (localStorage)</span>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                💡 Рекомендуется регулярно создавать бэкапы, особенно перед важными изменениями.
+              </p>
+            </div>
           </div>
         </div>
       )}
