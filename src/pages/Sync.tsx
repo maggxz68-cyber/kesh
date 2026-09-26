@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { generateSyncCode, applySyncCode, exportFamilyToFile, importFamilyFromFile } from '../utils/sync';
 import { useAuthStore } from '../store/auth';
+import { copyToClipboard } from '../utils/clipboard';
 import { Copy, Check, Upload, Download, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function Sync() {
@@ -23,8 +24,8 @@ export default function Sync() {
     }
   };
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(syncCode);
+  const handleCopyCode = async () => {
+    await copyToClipboard(syncCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
