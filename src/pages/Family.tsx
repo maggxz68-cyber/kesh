@@ -6,12 +6,23 @@ import { TransactionType } from '../types';
 import { Users, Shield, UserPlus, Trash2, Copy, Check, Crown } from 'lucide-react';
 
 export default function Family() {
-  const { familyMembers, transactions, currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
+  const { currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
   const { currentFamilyId, families, currentUser } = useAuthStore();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: UserRole.USER });
   const [copied, setCopied] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  
+  // Получаем данные семьи через селекторы (реактивно)
+  const familyMembers = useStore(state => {
+    const data = state.getCurrentFamilyData();
+    return data?.familyMembers || [];
+  });
+  
+  const transactions = useStore(state => {
+    const data = state.getCurrentFamilyData();
+    return data?.transactions || [];
+  });
   
   // Проверяем, является ли текущий пользователь владельцем семьи
   const currentFamily = families.find(f => f.id === currentFamilyId);
