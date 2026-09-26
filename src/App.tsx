@@ -80,6 +80,14 @@ function Layout() {
     autoUpdateExchangeRates(); // Автоматическое обновление курсов валют с ЦБ РФ
   }, [init]);
 
+  // Синхронизация currentUserId с currentUser при входе
+  useEffect(() => {
+    if (currentUser) {
+      const { setCurrentUser } = useStore.getState();
+      setCurrentUser(currentUser.id);
+    }
+  }, [currentUser]);
+
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');

@@ -7,13 +7,15 @@ import {
 } from '../types';
 import { UserRole } from '../types/auth';
 
-export const OWNER_ID = 'user-owner-001';
-export const MEMBER_IDS = ['user-owner-001', 'user-wife-002', 'user-kid-003'];
+export const OWNER_ID = 'demo-user-001';
+export const WIFE_ID = 'demo-wife-002';
+export const KID_ID = 'demo-kid-003';
+export const MEMBER_IDS = [OWNER_ID, WIFE_ID, KID_ID];
 
 export const defaultFamilyMembers: FamilyMember[] = [
   { id: uuidv4(), userId: OWNER_ID, name: 'Иван Петров', email: 'ivan@mail.ru', role: UserRole.FAMILY_ADMIN, avatar: '👨', color: '#3b82f6', joinedAt: new Date().toISOString() },
-  { id: uuidv4(), userId: 'user-wife-002', name: 'Мария Петрова', email: 'maria@mail.ru', role: UserRole.FAMILY_ADMIN, avatar: '👩', color: '#ec4899', joinedAt: new Date().toISOString() },
-  { id: uuidv4(), userId: 'user-kid-003', name: 'Алексей Петров', email: 'alex@mail.ru', role: UserRole.USER, avatar: '👦', color: '#22c55e', joinedAt: new Date().toISOString() },
+  { id: uuidv4(), userId: WIFE_ID, name: 'Мария Петрова', email: 'maria@mail.ru', role: UserRole.FAMILY_ADMIN, avatar: '👩', color: '#ec4899', joinedAt: new Date().toISOString() },
+  { id: uuidv4(), userId: KID_ID, name: 'Алексей Петров', email: 'alex@mail.ru', role: UserRole.USER, avatar: '👦', color: '#22c55e', joinedAt: new Date().toISOString() },
 ];
 
 export const defaultCategories: Category[] = [
@@ -74,7 +76,7 @@ export function generateSeedTransactions(accounts: Account[], categories: Catego
       accountId: cardAccount.id, toAccountId: null, categoryId: incomeCats[0].id,
       paymentMethod: PaymentMethod.CASHLESS, description: 'Зарплата Марии',
       counterparty: 'ООО Техно', hasReceipt: false, receipt: null, tags: ['зарплата'],
-      isPrivate: false, createdById: 'user-wife-002', recurringRuleId: null,
+      isPrivate: false, createdById: WIFE_ID, recurringRuleId: null,
       createdAt: new Date(now.getFullYear(), now.getMonth(), 5).toISOString(),
     },
     {
@@ -94,7 +96,7 @@ export function generateSeedTransactions(accounts: Account[], categories: Catego
           { id: uuidv4(), name: 'Курица филе', quantity: 1, price: 450, total: 450 },
         ],
       },
-      tags: ['продукты'], isPrivate: false, createdById: 'user-wife-002', recurringRuleId: null,
+      tags: ['продукты'], isPrivate: false, createdById: WIFE_ID, recurringRuleId: null,
       createdAt: new Date(now.getFullYear(), now.getMonth(), 7).toISOString(),
     },
     {
@@ -127,7 +129,7 @@ export function generateSeedTransactions(accounts: Account[], categories: Catego
       accountId: cashAccount.id, toAccountId: null, categoryId: expenseCats[3].id,
       paymentMethod: PaymentMethod.CASH, description: 'Лекарства',
       counterparty: 'Аптека 36.6', hasReceipt: false, receipt: null, tags: ['здоровье'],
-      isPrivate: false, createdById: 'user-wife-002', recurringRuleId: null,
+      isPrivate: false, createdById: WIFE_ID, recurringRuleId: null,
       createdAt: new Date(now.getFullYear(), now.getMonth(), 12).toISOString(),
     },
     {
@@ -178,7 +180,7 @@ export function generateSeedTransactions(accounts: Account[], categories: Catego
         totalAmount: 5600, filePath: null,
         items: [{ id: uuidv4(), name: 'Куртка зимняя', quantity: 1, price: 5600, total: 5600 }],
       },
-      tags: ['одежда'], isPrivate: false, createdById: 'user-wife-002', recurringRuleId: null,
+      tags: ['одежда'], isPrivate: false, createdById: WIFE_ID, recurringRuleId: null,
       createdAt: new Date(now.getFullYear(), now.getMonth(), 20).toISOString(),
     },
     {
@@ -205,7 +207,7 @@ export function generateSeedTransactions(accounts: Account[], categories: Catego
       accountId: cashAccount.id, toAccountId: null, categoryId: expenseCats[4].id,
       paymentMethod: PaymentMethod.CASH, description: 'Курсы английского',
       counterparty: 'Skyeng', hasReceipt: false, receipt: null, tags: ['образование'],
-      isPrivate: false, createdById: 'user-kid-003', recurringRuleId: null,
+      isPrivate: false, createdById: KID_ID, recurringRuleId: null,
       createdAt: new Date(now.getFullYear(), now.getMonth(), 13).toISOString(),
     },
     {
@@ -224,7 +226,7 @@ export function generateSeedTransactions(accounts: Account[], categories: Catego
           { id: uuidv4(), name: 'Йогурты', quantity: 4, price: 65, total: 260 },
         ],
       },
-      tags: ['продукты'], isPrivate: false, createdById: 'user-wife-002', recurringRuleId: null,
+      tags: ['продукты'], isPrivate: false, createdById: WIFE_ID, recurringRuleId: null,
       createdAt: new Date(now.getFullYear(), now.getMonth(), 17).toISOString(),
     },
   ];
