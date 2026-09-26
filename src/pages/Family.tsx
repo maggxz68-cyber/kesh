@@ -5,6 +5,7 @@ import { UserRole } from '../types/auth';
 import { TransactionType } from '../types';
 import { Users, Shield, UserPlus, Trash2, Copy, Check, Crown } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
+import { copyToClipboard } from '../utils/clipboard';
 
 export default function Family() {
   const { currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
@@ -122,8 +123,8 @@ export default function Family() {
     }
   };
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(inviteLink);
+  const handleCopyLink = async () => {
+    await copyToClipboard(inviteLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
