@@ -37,6 +37,7 @@ interface AppState {
   initialized: boolean;
 
   init: () => void;
+  resetDemoData: () => void;
   setDarkMode: (v: boolean) => void;
   setCurrentUser: (id: string) => void;
   setBaseCurrency: (c: Currency) => void;
@@ -122,11 +123,29 @@ export const useStore = create<AppState>()(
 
       init: () => {
         const state = get();
-        if (state.initialized) return;
+        if (state.initialized) {
+          // Проверяем, есть ли демо-данные для демо-семьи
+          const demoData = state.familiesData[DEMO_FAMILY_ID];
+          if (!demoData || demoData.transactions.length === 0) {
+            // Восстанавливаем полные демо-данные
+            const fullDemoData = createDemoFamilyData();
+            set({
+              familiesData: { ...state.familiesData, [DEMO_FAMILY_ID]: fullDemoData },
+            });
+          }
+          return;
+        }
         const demoData = createDemoFamilyData();
         set({
           familiesData: { [DEMO_FAMILY_ID]: demoData },
           initialized: true,
+        });
+      },
+
+      resetDemoData: () => {
+        const fullDemoData = createDemoFamilyData();
+        set({
+          familiesData: { ...get().familiesData, [DEMO_FAMILY_ID]: fullDemoData },
         });
       },
 
