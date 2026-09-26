@@ -1,6 +1,5 @@
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
-  ADMIN = 'ADMIN',
   USER = 'USER',
 }
 
@@ -9,6 +8,7 @@ export interface User {
   login: string;
   password: string;
   name: string;
+  email: string;
   role: UserRole;
   familyIds: string[];
   createdAt: string;
@@ -25,12 +25,15 @@ export interface Family {
 export interface AuthState {
   currentUser: User | null;
   currentFamilyId: string | null;
+  isDemoMode: boolean;
   users: User[];
   families: Family[];
   isAuthenticated: boolean;
   
   login: (login: string, password: string) => boolean;
+  loginDemo: () => void;
   logout: () => void;
+  register: (name: string, email: string, password: string, familyName: string) => boolean;
   setCurrentFamily: (familyId: string) => void;
   addUser: (user: Omit<User, 'id' | 'createdAt' | 'familyIds'>) => void;
   deleteUser: (userId: string) => void;

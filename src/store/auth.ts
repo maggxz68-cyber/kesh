@@ -6,41 +6,51 @@ import { User, UserRole, Family, AuthState } from '../types/auth';
 const ADMIN_LOGIN = 'admin';
 const ADMIN_PASSWORD = '1968';
 
+// Супер-админ — не состоит ни в какой семье
 const defaultAdmin: User = {
   id: 'admin-001',
   login: ADMIN_LOGIN,
   password: ADMIN_PASSWORD,
-  name: 'Администратор',
+  name: 'Администратор системы',
+  email: 'admin@system.local',
   role: UserRole.SUPER_ADMIN,
-  familyIds: ['family-001'],
+  familyIds: [],
   createdAt: new Date().toISOString(),
 };
 
-const defaultUser: User = {
-  id: 'user-001',
-  login: 'user',
-  password: '1234',
-  name: 'Иван Петров',
+// Демо-семья для ознакомления
+const DEMO_FAMILY_ID = 'demo-family';
+const DEMO_USER_ID = 'demo-user';
+
+const demoUser: User = {
+  id: DEMO_USER_ID,
+  login: 'demo',
+  password: 'demo',
+  name: 'Демо-пользователь',
+  email: 'demo@example.com',
   role: UserRole.USER,
-  familyIds: ['family-001'],
+  familyIds: [DEMO_FAMILY_ID],
   createdAt: new Date().toISOString(),
 };
 
-const defaultFamily: Family = {
-  id: 'family-001',
-  name: 'Семья Петровых',
-  ownerId: 'user-001',
-  memberIds: ['user-001'],
+const demoFamily: Family = {
+  id: DEMO_FAMILY_ID,
+  name: 'Демо-семья (ознакомление)',
+  ownerId: DEMO_USER_ID,
+  memberIds: [DEMO_USER_ID],
   createdAt: new Date().toISOString(),
 };
+
+export { DEMO_FAMILY_ID, DEMO_USER_ID };
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       currentUser: null,
       currentFamilyId: null,
-      users: [defaultAdmin, defaultUser],
-      families: [defaultFamily],
+      isDemoMode: false,
+      users: [defaultAdmin, demoUser],
+      families: [demoFamily],
       isAuthenticated: false,
 
       login: (login: string, password: string) => {
@@ -48,20 +58,78 @@ export const useAuthStore = create<AuthState>()(
           u => u.login === login && u.password === password
         );
         if (user) {
-          // Автоматически выбираем первую семью пользователя
-          const firstFamilyId = user.familyIds.length > 0 ? user.familyIds[0] : null;
-          set({ 
-            currentUser: user, 
-            currentFamilyId: firstFamilyId,
-            isAuthenticated: true 
-          });
+          // Супер-админ не имеет семьи
+          if (user.role === UserRole.SUPER_ADMIN) {
+            set({
+              currentUser: user,
+              currentFamilyId: null,
+              isDemoMode: false,
+              isAuthenticated: true,
+            });
+          } else {
+            const firstFamilyId = user.familyIds.length > 0 ? user.familyIds[0] : null;
+            set({
+              currentUser: user,
+              currentFamilyId: firstFamilyId,
+              isDemoMode: false,
+              isAuthenticated: true,
+            });
+          }
           return true;
         }
         return false;
       },
 
+      loginDemo: () => {
+        set({
+          currentUser: demoUser,
+          currentFamilyId: DEMO_FAMILY_ID,
+          isDemoMode: true,
+          isAuthenticated: true,
+        });
+      },
+
       logout: () => {
-        set({ currentUser: null, currentFamilyId: null, isAuthenticated: false });
+        set({ currentUser: null, currentFamilyId: null, isDemoMode: false, isAuthenticated: false });
+      },
+
+      register: (name: string, email: string, password: string, familyName: string) => {
+        const { users } = get();
+        // Проверка уникальности email
+        if (users.some(u => u.email === email)) return false;
+
+        const userId = uuidv4();
+        const familyId = uuidv4();
+
+        const newUser: User = {
+          id: userId,
+          login: email,
+          password,
+          name,
+          email,
+          role: UserRole.USER,
+          familyIds: [familyId],
+          createdAt: new Date().toISOString(),
+        };
+
+        const newFamily: Family = {
+          id: familyId,
+          name: familyName,
+          ownerId: userId,
+          memberIds: [userId],
+          createdAt: new Date().toISOString(),
+        };
+
+        set({
+          users: [...users, newUser],
+          families: [...get().families, newFamily],
+          currentUser: newUser,
+          currentFamilyId: familyId,
+          isDemoMode: false,
+          isAuthenticated: true,
+        });
+
+        return true;
       },
 
       setCurrentFamily: (familyId: string) => {
@@ -84,12 +152,8 @@ export const useAuthStore = create<AuthState>()(
       deleteUser: (userId: string) => {
         const { users, families } = get();
         const user = users.find(u => u.id === userId);
-        if (!user) return;
+        if (!user || user.role === UserRole.SUPER_ADMIN) return;
 
-        // Не удаляем админа
-        if (user.role === UserRole.SUPER_ADMIN) return;
-
-        // Удаляем пользователя из всех семей
         const updatedFamilies = families.map(f => ({
           ...f,
           memberIds: f.memberIds.filter(id => id !== userId),
@@ -110,7 +174,6 @@ export const useAuthStore = create<AuthState>()(
           createdAt: new Date().toISOString(),
         };
 
-        // Добавляем семью владельцу
         const updatedUsers = get().users.map(u =>
           u.id === ownerId ? { ...u, familyIds: [...u.familyIds, newFamily.id] } : u
         );
@@ -125,13 +188,10 @@ export const useAuthStore = create<AuthState>()(
 
       deleteFamily: (familyId: string) => {
         const { families, users } = get();
-
-        // Удаляем семью из списка семей пользователей
         const updatedUsers = users.map(u => ({
           ...u,
           familyIds: u.familyIds.filter(id => id !== familyId),
         }));
-
         set({
           families: families.filter(f => f.id !== familyId),
           users: updatedUsers,
@@ -140,42 +200,34 @@ export const useAuthStore = create<AuthState>()(
 
       addMemberToFamily: (familyId: string, userId: string) => {
         const { families, users } = get();
-
         const updatedFamilies = families.map(f =>
           f.id === familyId && !f.memberIds.includes(userId)
             ? { ...f, memberIds: [...f.memberIds, userId] }
             : f
         );
-
         const updatedUsers = users.map(u =>
           u.id === userId && !u.familyIds.includes(familyId)
             ? { ...u, familyIds: [...u.familyIds, familyId] }
             : u
         );
-
         set({ families: updatedFamilies, users: updatedUsers });
       },
 
       removeMemberFromFamily: (familyId: string, userId: string) => {
         const { families, users } = get();
-
         const updatedFamilies = families.map(f =>
           f.id === familyId
             ? { ...f, memberIds: f.memberIds.filter(id => id !== userId) }
             : f
         );
-
         const updatedUsers = users.map(u =>
           u.id === userId
             ? { ...u, familyIds: u.familyIds.filter(id => id !== familyId) }
             : u
         );
-
         set({ families: updatedFamilies, users: updatedUsers });
       },
     }),
-    {
-      name: 'auth-storage',
-    }
+    { name: 'auth-storage' }
   )
 );

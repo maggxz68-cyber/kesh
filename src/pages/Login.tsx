@@ -1,13 +1,18 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/auth';
-import { Lock, User, AlertCircle } from 'lucide-react';
+import { Lock, User, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
-export default function Login() {
-  const { login } = useAuthStore();
+interface LoginProps {
+  onRegister: () => void;
+}
+
+export default function Login({ onRegister }: LoginProps) {
+  const { login, loginDemo } = useAuthStore();
   const [loginValue, setLoginValue] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +28,11 @@ export default function Login() {
         setIsLoading(false);
       }
     }, 500);
+  };
+
+  const handleDemo = () => {
+    loginDemo();
+    window.location.href = '/';
   };
 
   return (
@@ -65,20 +75,27 @@ export default function Login() {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full pl-10 pr-10 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   placeholder="Введите пароль"
                   required
                   autoComplete="current-password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
               </div>
             </div>
 
             {error && (
               <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <AlertCircle size={18} className="text-red-600 dark:text-red-400" />
+                <AlertCircle size={18} className="text-red-600 dark:text-red-400 shrink-0" />
                 <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
               </div>
             )}
@@ -91,6 +108,23 @@ export default function Login() {
               {isLoading ? 'Вход...' : 'Войти'}
             </button>
           </form>
+
+          <div className="mt-6 space-y-3">
+            <button
+              onClick={handleDemo}
+              className="w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2"
+            >
+              <span className="text-lg">🎯</span>
+              Демо-доступ (без регистрации)
+            </button>
+
+            <button
+              onClick={onRegister}
+              className="w-full py-3 border-2 border-blue-600 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium rounded-lg transition-all"
+            >
+              Создать свою семью
+            </button>
+          </div>
         </div>
       </div>
     </div>

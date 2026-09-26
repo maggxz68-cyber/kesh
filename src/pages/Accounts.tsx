@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useStore, formatCurrency } from '../store';
-import { useAuthStore } from '../store/auth';
 import { AccountType, Currency, Account } from '../types';
 import { Plus, Edit3, Trash2, Save, X } from 'lucide-react';
 
@@ -30,8 +29,7 @@ export default function Accounts() {
       updateAccount(editingId, { name: form.name, type: form.type, currency: form.currency });
       setEditingId(null);
     } else {
-      const { currentFamilyId } = useAuthStore.getState();
-      addAccount({ name: form.name, familyId: currentFamilyId || 'family-001', type: form.type, currency: form.currency, balance: form.balance, isShared: true });
+      addAccount({ name: form.name, type: form.type, currency: form.currency, balance: form.balance, isShared: true });
     }
     setForm({ name: '', type: AccountType.CARD, currency: Currency.RUB, balance: 0 });
     setShowForm(false);

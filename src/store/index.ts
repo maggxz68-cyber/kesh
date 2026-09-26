@@ -7,20 +7,26 @@ import {
   RecurringRule, RecurFreq, RecurMode, ExchangeRate, FamilyMember, FamilyRole,
   BudgetProgress, UpcomingPayment, ForecastPoint,
 } from '../types';
+import { useAuthStore, DEMO_FAMILY_ID } from './auth';
 import {
   defaultAccounts, defaultCategories, generateSeedTransactions,
   generateSeedBudgets, generateSeedRecurring, defaultExchangeRates,
   defaultFamilyMembers, OWNER_ID,
 } from '../data/seed';
 
-interface AppState {
+// Данные хранятся по семьям
+interface FamilyData {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
   recurringRules: RecurringRule[];
-  exchangeRates: ExchangeRate[];
   familyMembers: FamilyMember[];
+}
+
+interface AppState {
+  familiesData: Record<string, FamilyData>;
+  exchangeRates: ExchangeRate[];
   currentUserId: string;
   baseCurrency: Currency;
   filters: FilterState;
@@ -34,15 +40,19 @@ interface AppState {
   setFilters: (f: Partial<FilterState>) => void;
   resetFilters: () => void;
 
-  addAccount: (account: Omit<Account, 'id' | 'createdAt'>) => void;
+  // Helpers для работы с данными текущей семьи
+  getCurrentFamilyData: () => FamilyData | null;
+  ensureFamilyData: (familyId: string) => FamilyData;
+
+  addAccount: (account: Omit<Account, 'id' | 'createdAt' | 'familyId'>) => void;
   updateAccount: (id: string, data: Partial<Account>) => void;
   deleteAccount: (id: string) => void;
 
-  addCategory: (category: Omit<Category, 'id'>) => void;
+  addCategory: (category: Omit<Category, 'id' | 'familyId'>) => void;
   updateCategory: (id: string, data: Partial<Category>) => void;
   deleteCategory: (id: string) => void;
 
-  addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt'>) => void;
+  addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt' | 'familyId'>) => void;
   updateTransaction: (id: string, data: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
 
@@ -63,6 +73,14 @@ interface AppState {
   updateMemberRole: (userId: string, role: FamilyRole) => void;
   removeFamilyMember: (userId: string) => void;
 
+  // Computed
+  get accounts(): Account[];
+  get categories(): Category[];
+  get transactions(): Transaction[];
+  get budgets(): Budget[];
+  get recurringRules(): RecurringRule[];
+  get familyMembers(): FamilyMember[];
+
   getFilteredTransactions: () => Transaction[];
   getAccountBalance: (accountId: string) => number;
   recalcBalances: () => void;
@@ -78,16 +96,21 @@ const defaultFilters: FilterState = {
   hasReceipt: null, categoryId: null, accountId: null, userId: null, search: '',
 };
 
+function createDemoFamilyData(): FamilyData {
+  const accounts = defaultAccounts.map(a => ({ ...a, id: uuidv4(), familyId: DEMO_FAMILY_ID }));
+  const categories = defaultCategories.map(c => ({ ...c, id: uuidv4(), familyId: DEMO_FAMILY_ID }));
+  const transactions = generateSeedTransactions(accounts, categories).map(t => ({ ...t, familyId: DEMO_FAMILY_ID }));
+  const budgets = generateSeedBudgets(categories);
+  const recurringRules = generateSeedRecurring(accounts, categories);
+  const familyMembers = defaultFamilyMembers.map(m => ({ ...m, id: uuidv4() }));
+  return { accounts, categories, transactions, budgets, recurringRules, familyMembers };
+}
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
-      accounts: [],
-      categories: [],
-      transactions: [],
-      budgets: [],
-      recurringRules: [],
-      exchangeRates: [],
-      familyMembers: [],
+      familiesData: {},
+      exchangeRates: defaultExchangeRates.map(r => ({ ...r, id: uuidv4() })),
       currentUserId: OWNER_ID,
       baseCurrency: Currency.RUB,
       filters: { ...defaultFilters },
@@ -97,15 +120,11 @@ export const useStore = create<AppState>()(
       init: () => {
         const state = get();
         if (state.initialized) return;
-        const accounts = defaultAccounts.map(a => ({ ...a, id: uuidv4() }));
-        const categories = defaultCategories.map(c => ({ ...c, id: uuidv4() }));
-        const transactions = generateSeedTransactions(accounts, categories);
-        const budgets = generateSeedBudgets(categories);
-        const recurringRules = generateSeedRecurring(accounts, categories);
-        const exchangeRates = defaultExchangeRates.map(r => ({ ...r, id: uuidv4() }));
-        const familyMembers = defaultFamilyMembers.map(m => ({ ...m, id: uuidv4() }));
-        set({ accounts, categories, transactions, budgets, recurringRules, exchangeRates, familyMembers, initialized: true });
-        get().recalcBalances();
+        const demoData = createDemoFamilyData();
+        set({
+          familiesData: { [DEMO_FAMILY_ID]: demoData },
+          initialized: true,
+        });
       },
 
       setDarkMode: (v) => set({ darkMode: v }),
@@ -114,42 +133,151 @@ export const useStore = create<AppState>()(
       setFilters: (f) => set({ filters: { ...get().filters, ...f } }),
       resetFilters: () => set({ filters: { ...defaultFilters } }),
 
+      getCurrentFamilyData: () => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return null;
+        return get().familiesData[currentFamilyId] || null;
+      },
+
+      ensureFamilyData: (familyId: string) => {
+        const { familiesData } = get();
+        if (familiesData[familyId]) return familiesData[familyId];
+        // Создаём пустые данные для новой семьи
+        const emptyData: FamilyData = {
+          accounts: [],
+          categories: defaultCategories.map(c => ({ ...c, id: uuidv4(), familyId })),
+          transactions: [],
+          budgets: [],
+          recurringRules: [],
+          familyMembers: [],
+        };
+        set({ familiesData: { ...familiesData, [familyId]: emptyData } });
+        return emptyData;
+      },
+
       addAccount: (account) => {
-        const newAccount: Account = { ...account, id: uuidv4(), createdAt: new Date().toISOString() };
-        set({ accounts: [...get().accounts, newAccount] });
-      },
-      updateAccount: (id, data) => {
-        set({ accounts: get().accounts.map(a => a.id === id ? { ...a, ...data } : a) });
-      },
-      deleteAccount: (id) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().ensureFamilyData(currentFamilyId);
+        const newAccount: Account = {
+          ...account,
+          familyId: currentFamilyId,
+          id: uuidv4(),
+          createdAt: new Date().toISOString(),
+        };
         set({
-          accounts: get().accounts.filter(a => a.id !== id),
-          transactions: get().transactions.filter(t => t.accountId !== id && t.toAccountId !== id),
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: { ...familyData, accounts: [...familyData.accounts, newAccount] },
+          },
+        });
+      },
+
+      updateAccount: (id, data) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              accounts: familyData.accounts.map(a => a.id === id ? { ...a, ...data } : a),
+            },
+          },
+        });
+      },
+
+      deleteAccount: (id) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              accounts: familyData.accounts.filter(a => a.id !== id),
+              transactions: familyData.transactions.filter(t => t.accountId !== id && t.toAccountId !== id),
+            },
+          },
         });
       },
 
       addCategory: (category) => {
-        const newCategory: Category = { ...category, id: uuidv4() };
-        set({ categories: [...get().categories, newCategory] });
-      },
-      updateCategory: (id, data) => {
-        set({ categories: get().categories.map(c => c.id === id ? { ...c, ...data } : c) });
-      },
-      deleteCategory: (id) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().ensureFamilyData(currentFamilyId);
+        const newCategory: Category = { ...category, familyId: currentFamilyId, id: uuidv4() };
         set({
-          categories: get().categories.filter(c => c.id !== id),
-          transactions: get().transactions.map(t => t.categoryId === id ? { ...t, categoryId: null } : t),
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: { ...familyData, categories: [...familyData.categories, newCategory] },
+          },
+        });
+      },
+
+      updateCategory: (id, data) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              categories: familyData.categories.map(c => c.id === id ? { ...c, ...data } : c),
+            },
+          },
+        });
+      },
+
+      deleteCategory: (id) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              categories: familyData.categories.filter(c => c.id !== id),
+              transactions: familyData.transactions.map(t => t.categoryId === id ? { ...t, categoryId: null } : t),
+            },
+          },
         });
       },
 
       addTransaction: (tx) => {
-        const newTx: Transaction = { ...tx, id: uuidv4(), createdAt: new Date().toISOString() };
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().ensureFamilyData(currentFamilyId);
+        const newTx: Transaction = {
+          ...tx,
+          familyId: currentFamilyId,
+          id: uuidv4(),
+          createdAt: new Date().toISOString(),
+        };
         if (newTx.receipt) newTx.receipt.transactionId = newTx.id;
-        set({ transactions: [...get().transactions, newTx] });
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: { ...familyData, transactions: [...familyData.transactions, newTx] },
+          },
+        });
         get().recalcBalances();
       },
+
       updateTransaction: (id, data) => {
-        const transactions = get().transactions.map(t => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        const transactions = familyData.transactions.map(t => {
           if (t.id === id) {
             const updated = { ...t, ...data };
             if (updated.receipt) updated.receipt.transactionId = updated.id;
@@ -157,46 +285,148 @@ export const useStore = create<AppState>()(
           }
           return t;
         });
-        set({ transactions });
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: { ...familyData, transactions },
+          },
+        });
         get().recalcBalances();
       },
+
       deleteTransaction: (id) => {
-        set({ transactions: get().transactions.filter(t => t.id !== id) });
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              transactions: familyData.transactions.filter(t => t.id !== id),
+            },
+          },
+        });
         get().recalcBalances();
       },
 
       addBudget: (budget) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().ensureFamilyData(currentFamilyId);
         const newBudget: Budget = { ...budget, id: uuidv4(), createdAt: new Date().toISOString() };
-        set({ budgets: [...get().budgets, newBudget] });
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: { ...familyData, budgets: [...familyData.budgets, newBudget] },
+          },
+        });
       },
+
       updateBudget: (id, data) => {
-        set({ budgets: get().budgets.map(b => b.id === id ? { ...b, ...data } : b) });
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              budgets: familyData.budgets.map(b => b.id === id ? { ...b, ...data } : b),
+            },
+          },
+        });
       },
+
       deleteBudget: (id) => {
-        set({ budgets: get().budgets.filter(b => b.id !== id) });
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              budgets: familyData.budgets.filter(b => b.id !== id),
+            },
+          },
+        });
       },
 
       addRecurringRule: (rule) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().ensureFamilyData(currentFamilyId);
         const newRule: RecurringRule = { ...rule, id: uuidv4(), createdAt: new Date().toISOString() };
-        set({ recurringRules: [...get().recurringRules, newRule] });
-      },
-      updateRecurringRule: (id, data) => {
-        set({ recurringRules: get().recurringRules.map(r => r.id === id ? { ...r, ...data } : r) });
-      },
-      deleteRecurringRule: (id) => {
-        set({ recurringRules: get().recurringRules.filter(r => r.id !== id) });
-      },
-      skipRecurringRun: (id, date) => {
         set({
-          recurringRules: get().recurringRules.map(r =>
-            r.id === id ? { ...r, skippedDates: [...r.skippedDates, date] } : r
-          ),
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: { ...familyData, recurringRules: [...familyData.recurringRules, newRule] },
+          },
         });
       },
+
+      updateRecurringRule: (id, data) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              recurringRules: familyData.recurringRules.map(r => r.id === id ? { ...r, ...data } : r),
+            },
+          },
+        });
+      },
+
+      deleteRecurringRule: (id) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              recurringRules: familyData.recurringRules.filter(r => r.id !== id),
+            },
+          },
+        });
+      },
+
+      skipRecurringRun: (id, date) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              recurringRules: familyData.recurringRules.map(r =>
+                r.id === id ? { ...r, skippedDates: [...r.skippedDates, date] } : r
+              ),
+            },
+          },
+        });
+      },
+
       generateRecurringTransaction: (ruleId) => {
-        const rule = get().recurringRules.find(r => r.id === ruleId);
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        const rule = familyData.recurringRules.find(r => r.id === ruleId);
         if (!rule) return;
-        const tx: Omit<Transaction, 'id' | 'createdAt'> = {
+        const tx: Omit<Transaction, 'id' | 'createdAt' | 'familyId'> = {
           type: rule.type, amount: rule.amount, currency: rule.currency,
           date: rule.nextRunAt, accountId: rule.accountId, toAccountId: rule.toAccountId,
           categoryId: rule.categoryId, paymentMethod: rule.paymentMethod,
@@ -205,7 +435,6 @@ export const useStore = create<AppState>()(
           isPrivate: false, createdById: rule.userId, recurringRuleId: rule.id,
         };
         get().addTransaction(tx);
-        // Advance nextRunAt
         const nextDate = new Date(rule.nextRunAt);
         switch (rule.freq) {
           case RecurFreq.DAILY: nextDate.setDate(nextDate.getDate() + rule.interval); break;
@@ -214,9 +443,15 @@ export const useStore = create<AppState>()(
           case RecurFreq.YEARLY: nextDate.setFullYear(nextDate.getFullYear() + rule.interval); break;
         }
         set({
-          recurringRules: get().recurringRules.map(r =>
-            r.id === ruleId ? { ...r, nextRunAt: nextDate.toISOString() } : r
-          ),
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              recurringRules: familyData.recurringRules.map(r =>
+                r.id === ruleId ? { ...r, nextRunAt: nextDate.toISOString() } : r
+              ),
+            },
+          },
         });
       },
 
@@ -236,8 +471,8 @@ export const useStore = create<AppState>()(
           });
         }
       },
+
       refreshRates: () => {
-        // Simulate rate refresh with small random changes
         const rates = get().exchangeRates.map(r => ({
           ...r,
           rate: Math.round((r.rate * (1 + (Math.random() - 0.5) * 0.02)) * 100) / 100,
@@ -248,19 +483,81 @@ export const useStore = create<AppState>()(
       },
 
       addFamilyMember: (member) => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().ensureFamilyData(currentFamilyId);
         const newMember: FamilyMember = { ...member, id: uuidv4(), joinedAt: new Date().toISOString() };
-        set({ familyMembers: [...get().familyMembers, newMember] });
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: { ...familyData, familyMembers: [...familyData.familyMembers, newMember] },
+          },
+        });
       },
+
       updateMemberRole: (userId, role) => {
-        set({ familyMembers: get().familyMembers.map(m => m.userId === userId ? { ...m, role } : m) });
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              familyMembers: familyData.familyMembers.map(m => m.userId === userId ? { ...m, role } : m),
+            },
+          },
+        });
       },
+
       removeFamilyMember: (userId) => {
-        set({ familyMembers: get().familyMembers.filter(m => m.userId !== userId) });
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: {
+              ...familyData,
+              familyMembers: familyData.familyMembers.filter(m => m.userId !== userId),
+            },
+          },
+        });
+      },
+
+      // Computed getters через прокси (используются в компонентах)
+      get accounts() {
+        const data = get().getCurrentFamilyData();
+        return data?.accounts || [];
+      },
+      get categories() {
+        const data = get().getCurrentFamilyData();
+        return data?.categories || [];
+      },
+      get transactions() {
+        const data = get().getCurrentFamilyData();
+        return data?.transactions || [];
+      },
+      get budgets() {
+        const data = get().getCurrentFamilyData();
+        return data?.budgets || [];
+      },
+      get recurringRules() {
+        const data = get().getCurrentFamilyData();
+        return data?.recurringRules || [];
+      },
+      get familyMembers() {
+        const data = get().getCurrentFamilyData();
+        return data?.familyMembers || [];
       },
 
       getFilteredTransactions: () => {
-        const { transactions, filters } = get();
-        return transactions.filter(t => {
+        const data = get().getCurrentFamilyData();
+        if (!data) return [];
+        const { filters } = get();
+        return data.transactions.filter(t => {
           if (filters.dateFrom && new Date(t.date) < new Date(filters.dateFrom)) return false;
           if (filters.dateTo && new Date(t.date) > new Date(filters.dateTo + 'T23:59:59')) return false;
           if (filters.type && t.type !== filters.type) return false;
@@ -281,14 +578,18 @@ export const useStore = create<AppState>()(
       },
 
       getAccountBalance: (accountId) => {
-        return get().accounts.find(a => a.id === accountId)?.balance || 0;
+        const data = get().getCurrentFamilyData();
+        return data?.accounts.find(a => a.id === accountId)?.balance || 0;
       },
 
       recalcBalances: () => {
-        const { accounts, transactions } = get();
-        const newAccounts = accounts.map(account => {
+        const { currentFamilyId } = useAuthStore.getState();
+        if (!currentFamilyId) return;
+        const familyData = get().familiesData[currentFamilyId];
+        if (!familyData) return;
+        const newAccounts = familyData.accounts.map(account => {
           let balance = 0;
-          transactions.forEach(t => {
+          familyData.transactions.forEach(t => {
             if (t.type === TransactionType.INCOME && t.accountId === account.id) balance += t.amount;
             else if (t.type === TransactionType.EXPENSE && t.accountId === account.id) balance -= t.amount;
             else if (t.type === TransactionType.TRANSFER) {
@@ -298,7 +599,12 @@ export const useStore = create<AppState>()(
           });
           return { ...account, balance };
         });
-        set({ accounts: newAccounts });
+        set({
+          familiesData: {
+            ...get().familiesData,
+            [currentFamilyId]: { ...familyData, accounts: newAccounts },
+          },
+        });
       },
 
       getExchangeRate: (from, to) => {
@@ -308,7 +614,6 @@ export const useStore = create<AppState>()(
         if (direct) return direct.rate;
         const reverse = exchangeRates.find(r => r.baseCode === to && r.quoteCode === from);
         if (reverse) return 1 / reverse.rate;
-        // Try via RUB
         if (from !== Currency.RUB && to !== Currency.RUB) {
           const toRub = get().getExchangeRate(from, Currency.RUB);
           const fromRub = get().getExchangeRate(Currency.RUB, to);
@@ -324,37 +629,35 @@ export const useStore = create<AppState>()(
       },
 
       getBudgetProgress: () => {
-        const { budgets, transactions, categories } = get();
+        const data = get().getCurrentFamilyData();
+        if (!data) return [];
+        const { budgets, transactions, categories } = data;
         const now = new Date();
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
         return budgets.filter(b => b.isActive).map(budget => {
           const cat = categories.find(c => c.id === budget.categoryId);
           const periodStart = new Date(budget.startDate);
-          let periodEnd: Date;
+          let effectiveStart = periodStart;
+          let effectiveEnd: Date;
           switch (budget.period) {
             case BudgetPeriod.WEEK:
-              periodEnd = new Date(periodStart);
-              periodEnd.setDate(periodEnd.getDate() + 7);
+              effectiveEnd = new Date(periodStart);
+              effectiveEnd.setDate(effectiveEnd.getDate() + 7);
               break;
             case BudgetPeriod.MONTH:
-              periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 0, 23, 59, 59);
+              effectiveEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 0, 23, 59, 59);
               break;
             case BudgetPeriod.YEAR:
-              periodEnd = new Date(periodStart.getFullYear() + 1, 0, 0, 23, 59, 59);
+              effectiveEnd = new Date(periodStart.getFullYear() + 1, 0, 0, 23, 59, 59);
               break;
             default:
-              periodEnd = new Date();
+              effectiveEnd = new Date();
           }
-
-          // For monthly budgets that started in past, use current month
-          let effectiveStart = periodStart;
-          let effectiveEnd = periodEnd;
           if (budget.period === BudgetPeriod.MONTH && periodStart < monthStart) {
             effectiveStart = monthStart;
             effectiveEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
           }
-
           const actual = transactions
             .filter(t =>
               t.type === TransactionType.EXPENSE &&
@@ -363,51 +666,37 @@ export const useStore = create<AppState>()(
               new Date(t.date) <= effectiveEnd
             )
             .reduce((sum, t) => sum + t.amount, 0);
-
           const remaining = budget.amount - actual;
           const percentage = budget.amount > 0 ? (actual / budget.amount) * 100 : 0;
           let status: 'ok' | 'warning' | 'exceeded' = 'ok';
           if (percentage >= 100) status = 'exceeded';
           else if (percentage >= 80) status = 'warning';
-
           return {
-            budgetId: budget.id,
-            budgetName: budget.name,
+            budgetId: budget.id, budgetName: budget.name,
             categoryName: cat?.name || 'Без категории',
-            planned: budget.amount,
-            actual,
-            remaining,
-            percentage: Math.min(percentage, 150),
-            status,
-            currency: budget.currency,
+            planned: budget.amount, actual, remaining,
+            percentage: Math.min(percentage, 150), status, currency: budget.currency,
           };
         });
       },
 
       getUpcomingPayments: (days) => {
-        const { recurringRules } = get();
+        const data = get().getCurrentFamilyData();
+        if (!data) return [];
         const now = new Date();
         const future = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
         const upcoming: UpcomingPayment[] = [];
-
-        recurringRules.filter(r => r.isActive).forEach(rule => {
+        data.recurringRules.filter(r => r.isActive).forEach(rule => {
           let date = new Date(rule.nextRunAt);
-          // Generate upcoming dates within the range
           for (let i = 0; i < 12; i++) {
             if (date > future) break;
             if (date >= now && !rule.skippedDates.includes(date.toISOString().split('T')[0])) {
               upcoming.push({
-                ruleId: rule.id,
-                ruleName: rule.name,
-                date: date.toISOString(),
-                amount: rule.amount,
-                currency: rule.currency,
-                type: rule.type,
-                counterparty: rule.counterparty,
-                mode: rule.mode,
+                ruleId: rule.id, ruleName: rule.name, date: date.toISOString(),
+                amount: rule.amount, currency: rule.currency, type: rule.type,
+                counterparty: rule.counterparty, mode: rule.mode,
               });
             }
-            // Advance date
             const nextDate = new Date(date);
             switch (rule.freq) {
               case RecurFreq.DAILY: nextDate.setDate(nextDate.getDate() + rule.interval); break;
@@ -418,22 +707,20 @@ export const useStore = create<AppState>()(
             date = nextDate;
           }
         });
-
         return upcoming.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       },
 
       getForecast: (months) => {
-        const { accounts, transactions, recurringRules } = get();
+        const data = get().getCurrentFamilyData();
+        if (!data) return [];
+        const { accounts, transactions } = data;
         const currentBalance = accounts.reduce((s, a) => {
           return s + get().convertToBase(a.balance, a.currency);
         }, 0);
-
         const now = new Date();
         const points: ForecastPoint[] = [];
         let balance = currentBalance;
         const monthNames = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
-
-        // Calculate average monthly income/expense from last 3 months
         const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
         const recentTx = transactions.filter(t => new Date(t.date) >= threeMonthsAgo);
         const avgMonthlyIncome = recentTx
@@ -442,16 +729,11 @@ export const useStore = create<AppState>()(
         const avgMonthlyExpense = recentTx
           .filter(t => t.type === TransactionType.EXPENSE)
           .reduce((s, t) => s + get().convertToBase(t.amount, t.currency), 0) / 3;
-
         for (let i = 1; i <= months; i++) {
           const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
           balance += avgMonthlyIncome - avgMonthlyExpense;
-          points.push({
-            month: `${monthNames[d.getMonth()]} ${d.getFullYear()}`,
-            balance: Math.round(balance),
-          });
+          points.push({ month: `${monthNames[d.getMonth()]} ${d.getFullYear()}`, balance: Math.round(balance) });
         }
-
         return points;
       },
     }),
