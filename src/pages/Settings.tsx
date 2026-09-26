@@ -5,13 +5,30 @@ import { TransactionType, PaymentMethod, Currency, Transaction } from '../types'
 import { Download, Upload, Trash2, Database, RefreshCw, Check, AlertTriangle, DollarSign, LogOut, User, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { accounts, categories, transactions, addTransaction, addAccount, setDarkMode, darkMode, exchangeRates, baseCurrency, setBaseCurrency, updateExchangeRate, refreshRates, familyMembers, currentUserId, setCurrentUser, resetDemoData } = useStore();
+  const { accounts, categories, transactions, addTransaction, addAccount, setDarkMode, darkMode, exchangeRates, baseCurrency, setBaseCurrency, updateExchangeRate, refreshRates, familyMembers, currentUserId, setCurrentUser, resetDemoData, init } = useStore();
   const { currentUser, logout } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<string>('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [rateForm, setRateForm] = useState({ baseCode: 'USD', quoteCode: 'RUB', rate: 0 });
   const [showExchangeRates, setShowExchangeRates] = useState(false);
+  
+  const handleForceInit = () => {
+    console.log('🔄 Принудительная инициализация...');
+    init();
+    setImportStatus('✅ Инициализация выполнена. Проверьте консоль (F12) для деталей.');
+    setTimeout(() => setImportStatus(''), 5000);
+  };
+  
+  const handleFullReset = () => {
+    if (confirm('⚠️ Это полностью очистит все данные и пересоздаст демо-данные. Продолжить?')) {
+      console.log('🗑️ Полная очистка localStorage...');
+      localStorage.clear();
+      console.log('✅ localStorage очищен');
+      console.log('🔄 Перезагрузка страницы...');
+      window.location.reload();
+    }
+  };
 
   const handleExportCSV = () => {
     const csv = exportToCSV(transactions, accounts, categories);
@@ -317,16 +334,31 @@ export default function SettingsPage() {
       <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
         <h3 className="font-semibold mb-3 flex items-center gap-2 text-blue-600"><RefreshCw size={18} /> Восстановить демо-данные</h3>
         <p className="text-sm text-gray-500 mb-3">Восстановить полные демо-данные для демо-семьи (транзакции, бюджеты, регулярные платежи).</p>
-        <button
-          onClick={() => {
-            resetDemoData();
-            setImportStatus('✅ Демо-данные восстановлены');
-            setTimeout(() => setImportStatus(''), 3000);
-          }}
-          className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300"
-        >
-          Восстановить демо-данные
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              resetDemoData();
+              setImportStatus('✅ Демо-данные восстановлены');
+              setTimeout(() => setImportStatus(''), 3000);
+            }}
+            className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300"
+          >
+            Восстановить демо-данные
+          </button>
+          <button
+            onClick={handleForceInit}
+            className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300"
+          >
+            Принудительная инициализация
+          </button>
+          <button
+            onClick={handleFullReset}
+            className="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300"
+          >
+            Полная очистка и перезагрузка
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-2">💡 Если данные не отображаются, используйте "Полная очистка и перезагрузка"</p>
       </div>
 
       {/* Danger zone */}

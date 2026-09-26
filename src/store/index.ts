@@ -167,56 +167,78 @@ export const useStore = create<AppState>()(
 
       init: () => {
         const state = get();
-        console.log('🔧 Инициализация store, initialized:', state.initialized);
+        console.log('🔧 Инициализация store');
+        console.log('📋 Текущее состояние:', {
+          initialized: state.initialized,
+          familiesDataKeys: Object.keys(state.familiesData),
+          hasDemoFamily: !!state.familiesData[DEMO_FAMILY_ID],
+        });
         
-        if (state.initialized) {
-          // Проверяем, есть ли демо-данные для демо-семьи
-          const demoData = state.familiesData[DEMO_FAMILY_ID];
-          console.log('📊 Демо-данные:', demoData ? {
-            accounts: demoData.accounts.length,
-            categories: demoData.categories.length,
-            transactions: demoData.transactions.length,
-            budgets: demoData.budgets.length,
-            recurringRules: demoData.recurringRules.length,
-          } : 'отсутствуют');
-          
-          if (!demoData || demoData.transactions.length === 0) {
-            console.log('⚠️ Демо-данные неполные, восстанавливаем...');
-            // Восстанавливаем полные демо-данные
-            const fullDemoData = createDemoFamilyData();
-            console.log('✅ Созданы демо-данные:', {
-              accounts: fullDemoData.accounts.length,
-              categories: fullDemoData.categories.length,
-              transactions: fullDemoData.transactions.length,
-              budgets: fullDemoData.budgets.length,
-              recurringRules: fullDemoData.recurringRules.length,
-            });
-            set({
-              familiesData: { ...state.familiesData, [DEMO_FAMILY_ID]: fullDemoData },
-            });
-          }
-          return;
-        }
-        
-        console.log('🆕 Первая инициализация, создаём демо-данные...');
-        const demoData = createDemoFamilyData();
-        console.log('✅ Созданы демо-данные:', {
+        // ВСЕГДА проверяем и создаём демо-данные, если их нет
+        const demoData = state.familiesData[DEMO_FAMILY_ID];
+        console.log('📊 Проверяем демо-данные:', demoData ? {
           accounts: demoData.accounts.length,
           categories: demoData.categories.length,
           transactions: demoData.transactions.length,
           budgets: demoData.budgets.length,
           recurringRules: demoData.recurringRules.length,
-        });
-        set({
-          familiesData: { [DEMO_FAMILY_ID]: demoData },
-          initialized: true,
-        });
+        } : 'отсутствуют или пусты');
+        
+        // Создаём демо-данные, если их нет или они неполные
+        if (!demoData || demoData.transactions.length === 0 || demoData.accounts.length === 0) {
+          console.log('⚠️ Демо-данные отсутствуют или неполные, создаём новые...');
+          const fullDemoData = createDemoFamilyData();
+          console.log('✅ Созданы демо-данные:', {
+            accounts: fullDemoData.accounts.length,
+            categories: fullDemoData.categories.length,
+            transactions: fullDemoData.transactions.length,
+            budgets: fullDemoData.budgets.length,
+            recurringRules: fullDemoData.recurringRules.length,
+            familyMembers: fullDemoData.familyMembers.length,
+          });
+          
+          // Сохраняем в state
+          set({
+            familiesData: { ...state.familiesData, [DEMO_FAMILY_ID]: fullDemoData },
+            initialized: true,
+          });
+          
+          console.log('✅ Демо-данные сохранены в state');
+          
+          // Проверяем, что данные действительно сохранились
+          const newState = get();
+          console.log('🔍 Проверка после сохранения:', {
+            hasDemoFamily: !!newState.familiesData[DEMO_FAMILY_ID],
+            transactionsCount: newState.familiesData[DEMO_FAMILY_ID]?.transactions.length,
+          });
+        } else {
+          console.log('✅ Демо-данные уже существуют и полные');
+          set({ initialized: true });
+        }
       },
 
       resetDemoData: () => {
+        console.log('🔄 Сброс демо-данных...');
         const fullDemoData = createDemoFamilyData();
+        console.log('✅ Созданы новые демо-данные:', {
+          accounts: fullDemoData.accounts.length,
+          categories: fullDemoData.categories.length,
+          transactions: fullDemoData.transactions.length,
+          budgets: fullDemoData.budgets.length,
+          recurringRules: fullDemoData.recurringRules.length,
+        });
+        
         set({
           familiesData: { ...get().familiesData, [DEMO_FAMILY_ID]: fullDemoData },
+        });
+        
+        console.log('✅ Демо-данные сохранены');
+        
+        // Проверяем
+        const newState = get();
+        console.log('🔍 Проверка:', {
+          hasDemoFamily: !!newState.familiesData[DEMO_FAMILY_ID],
+          transactionsCount: newState.familiesData[DEMO_FAMILY_ID]?.transactions.length,
         });
       },
 
@@ -228,54 +250,78 @@ export const useStore = create<AppState>()(
 
       getCurrentFamilyData: () => {
         const { currentFamilyId } = useAuthStore.getState();
+        console.log('🔍 getCurrentFamilyData вызван, currentFamilyId:', currentFamilyId);
+        
         if (!currentFamilyId) {
           console.warn('⚠️ currentFamilyId не установлен');
           return null;
         }
-        const data = get().familiesData[currentFamilyId];
+        
+        const allFamiliesData = get().familiesData;
+        console.log('📋 Все семьи в familiesData:', Object.keys(allFamiliesData));
+        
+        const data = allFamiliesData[currentFamilyId];
         if (!data) {
           console.warn('⚠️ Данные для семьи', currentFamilyId, 'не найдены');
-          console.log('📋 Доступные семьи:', Object.keys(get().familiesData));
+          console.log('📋 Доступные семьи:', Object.keys(allFamiliesData));
           return null;
         }
-        console.log('✅ getCurrentFamilyData для', currentFamilyId, ':', {
+        
+        console.log('✅ Данные найдены для', currentFamilyId, ':', {
           accounts: data.accounts.length,
           categories: data.categories.length,
           transactions: data.transactions.length,
           budgets: data.budgets.length,
           recurringRules: data.recurringRules.length,
+          familyMembers: data.familyMembers.length,
         });
+        
         return data;
       },
 
       ensureFamilyData: (familyId: string) => {
         const { familiesData } = get();
-        if (familiesData[familyId]) return familiesData[familyId];
+        console.log('🔍 ensureFamilyData для', familyId);
         
-        // Создаём данные для новой семьи с демо-справочниками (без транзакций)
+        if (familiesData[familyId]) {
+          console.log('✅ Данные уже существуют для', familyId);
+          return familiesData[familyId];
+        }
+        
+        console.log('🆕 Создаём новые данные для семьи', familyId);
+        
+        // Для демо-семьи создаём полные данные
+        if (familyId === DEMO_FAMILY_ID) {
+          console.log('🎯 Это демо-семья, создаём полные демо-данные');
+          const demoData = createDemoFamilyData();
+          set({ familiesData: { ...familiesData, [familyId]: demoData } });
+          return demoData;
+        }
+        
+        // Для новых семей создаём только справочники
         const newFamilyData: FamilyData = {
-          // Демо-счета с нулевыми балансами
           accounts: defaultAccounts.map(a => ({ 
             ...a, 
             id: uuidv4(), 
             familyId,
-            balance: 0 // Новые семьи начинают с нулевыми балансами
+            balance: 0
           })),
-          // Демо-категории
           categories: defaultCategories.map(c => ({ 
             ...c, 
             id: uuidv4(), 
             familyId 
           })),
-          // Пустые транзакции (без доходов и расходов)
           transactions: [],
-          // Пустые бюджеты
           budgets: [],
-          // Пустые регулярные платежи
           recurringRules: [],
-          // Пустые участники (будут добавлены через auth store)
           familyMembers: [],
         };
+        
+        console.log('✅ Созданы данные для новой семьи:', {
+          accounts: newFamilyData.accounts.length,
+          categories: newFamilyData.categories.length,
+          transactions: newFamilyData.transactions.length,
+        });
         
         set({ familiesData: { ...familiesData, [familyId]: newFamilyData } });
         return newFamilyData;
@@ -875,7 +921,24 @@ export const useStore = create<AppState>()(
         return points;
       },
     }),
-    { name: 'finance-tracker-storage' }
+    { 
+      name: 'finance-tracker-storage',
+      onRehydrateStorage: () => {
+        console.log('💾 Загрузка данных из localStorage...');
+        return (state, error) => {
+          if (error) {
+            console.error('❌ Ошибка загрузки из localStorage:', error);
+          } else {
+            console.log('✅ Данные загружены из localStorage');
+            console.log('📋 Состояние после загрузки:', {
+              initialized: state?.initialized,
+              familiesDataKeys: state ? Object.keys(state.familiesData) : [],
+              hasDemoFamily: state?.familiesData ? !!state.familiesData[DEMO_FAMILY_ID] : false,
+            });
+          }
+        };
+      }
+    }
   )
 );
 
