@@ -18,7 +18,12 @@ export interface ReceiptQRData {
  */
 export function parseReceiptQR(qrData: string): ReceiptQRData | null {
   try {
-    const params = new URLSearchParams(qrData);
+    console.log('🔍 Парсинг QR-кода:', qrData);
+    
+    // Удаляем возможные пробелы и переносы строк
+    const cleanData = qrData.trim().replace(/\s+/g, '');
+    
+    const params = new URLSearchParams(cleanData);
     
     const t = params.get('t');
     const s = params.get('s');
@@ -27,8 +32,17 @@ export function parseReceiptQR(qrData: string): ReceiptQRData | null {
     const fp = params.get('fp');
     const n = params.get('n');
 
+    console.log('📋 Распознанные параметры:', { t, s, fn, i, fp, n });
+
     if (!t || !s || !fn || !i || !fp) {
-      console.warn('Не все обязательные поля найдены в QR-коде');
+      console.warn('⚠️ Не все обязательные поля найдены в QR-коде');
+      console.warn('Отсутствуют:', {
+        t: !t ? 'дата/время' : null,
+        s: !s ? 'сумма' : null,
+        fn: !fn ? 'номер ФН' : null,
+        i: !i ? 'фискальный номер' : null,
+        fp: !fp ? 'фискальный признак' : null,
+      });
       return null;
     }
 
@@ -38,11 +52,11 @@ export function parseReceiptQR(qrData: string): ReceiptQRData | null {
     // Парсим сумму
     const totalSum = parseFloat(s);
     if (isNaN(totalSum)) {
-      console.warn('Неверный формат суммы');
+      console.warn('⚠️ Неверный формат суммы:', s);
       return null;
     }
 
-    return {
+    const result: ReceiptQRData = {
       dateTime,
       totalSum,
       fiscalDriveNumber: fn,
@@ -51,8 +65,11 @@ export function parseReceiptQR(qrData: string): ReceiptQRData | null {
       operationType: n ? parseInt(n) : 1,
       raw: qrData
     };
+
+    console.log('✅ Успешно распарсено:', result);
+    return result;
   } catch (error) {
-    console.error('Ошибка парсинга QR-кода:', error);
+    console.error('❌ Ошибка парсинга QR-кода:', error);
     return null;
   }
 }
@@ -72,6 +89,7 @@ function parseReceiptDate(dateStr: string): Date {
       const [, year, month, day] = altMatch;
       return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     }
+    console.warn('⚠️ Неверный формат даты:', dateStr);
     return new Date();
   }
 
@@ -123,4 +141,46 @@ export function formatReceiptDate(date: Date): string {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+/**
+ * Проверяет, является ли строка валидным QR-кодом чека
+ */
+export function isValidReceiptQR(qrData: string): boolean {
+  try {
+    const cleanData = qrData.trim();
+    const params = new URLSearchParams(cleanData);
+    
+    const t = params.get('t');
+    const s = params.get('s');
+    const fn = params.get('fn');
+    const i = params.get('i');
+    const fp = params.get('fp');
+
+    return !!(t && s && fn && i && fp);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Извлекает основные данные из QR-кода для отображения
+ */
+export function extractReceiptSummary(qrData: string): string {
+  try {
+    const cleanData = qrData.trim();
+    const params = new URLSearchParams(cleanData);
+    
+    const t = params.get('t');
+    const s = params.get('s');
+    
+    if (!t || !s) return 'Данные чека';
+    
+    const date = parseReceiptDate(t);
+    const sum = parseFloat(s);
+    
+    return `Чек от ${formatReceiptDate(date)} на сумму ${formatReceiptSum(sum)} ₽`;
+  } catch {
+    return 'Данные чека';
+  }
 }
