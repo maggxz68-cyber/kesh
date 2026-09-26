@@ -1,12 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useStore, formatCurrency } from '../store';
-import { FamilyRole, TransactionType } from '../types';
-import { Users, Shield, UserPlus, Trash2, Edit3, Copy, Check, Crown } from 'lucide-react';
+import { useAuthStore } from '../store/auth';
+import { UserRole } from '../types/auth';
+import { TransactionType } from '../types';
+import { Users, Shield, UserPlus, Trash2, Edit3, Copy, Check, Crown, Settings } from 'lucide-react';
 
 export default function Family() {
   const { familyMembers, transactions, currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
+  const { currentFamilyId, families, updateMemberRole: updateAuthMemberRole } = useAuthStore();
   const [showInvite, setShowInvite] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: FamilyRole.MEMBER });
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: UserRole.USER });
   const [copied, setCopied] = useState(false);
 
   const memberReports = useMemo(() => {

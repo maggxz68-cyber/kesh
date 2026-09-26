@@ -38,6 +38,7 @@ const demoFamily: Family = {
   name: 'Демо-семья (ознакомление)',
   ownerId: DEMO_USER_ID,
   memberIds: [DEMO_USER_ID],
+  memberRoles: { [DEMO_USER_ID]: UserRole.FAMILY_ADMIN },
   createdAt: new Date().toISOString(),
 };
 
@@ -107,7 +108,7 @@ export const useAuthStore = create<AuthState>()(
           password,
           name,
           email,
-          role: UserRole.USER,
+          role: UserRole.FAMILY_ADMIN, // Владелец семьи получает роль FAMILY_ADMIN
           familyIds: [familyId],
           createdAt: new Date().toISOString(),
         };
@@ -117,6 +118,7 @@ export const useAuthStore = create<AuthState>()(
           name: familyName,
           ownerId: userId,
           memberIds: [userId],
+          memberRoles: { [userId]: UserRole.FAMILY_ADMIN }, // Владелец - админ семьи
           createdAt: new Date().toISOString(),
         };
 
@@ -171,6 +173,7 @@ export const useAuthStore = create<AuthState>()(
           name,
           ownerId,
           memberIds: [ownerId],
+          memberRoles: { [ownerId]: UserRole.FAMILY_ADMIN }, // Владелец - админ семьи
           createdAt: new Date().toISOString(),
         };
 
@@ -198,13 +201,18 @@ export const useAuthStore = create<AuthState>()(
         });
       },
 
-      addMemberToFamily: (familyId: string, userId: string) => {
+      addMemberToFamily: (familyId: string, userId: string, role: UserRole = UserRole.USER) => {
         const { families, users } = get();
-        const updatedFamilies = families.map(f =>
-          f.id === familyId && !f.memberIds.includes(userId)
-            ? { ...f, memberIds: [...f.memberIds, userId] }
-            : f
-        );
+        const updatedFamilies = families.map(f => {
+          if (f.id === familyId && !f.memberIds.includes(userId)) {
+            return {
+              ...f,
+              memberIds: [...f.memberIds, userId],
+              memberRoles: { ...f.memberRoles, [userId]: role }
+            };
+          }
+          return f;
+        });
         const updatedUsers = users.map(u =>
           u.id === userId && !u.familyIds.includes(familyId)
             ? { ...u, familyIds: [...u.familyIds, familyId] }
@@ -215,17 +223,44 @@ export const useAuthStore = create<AuthState>()(
 
       removeMemberFromFamily: (familyId: string, userId: string) => {
         const { families, users } = get();
-        const updatedFamilies = families.map(f =>
-          f.id === familyId
-            ? { ...f, memberIds: f.memberIds.filter(id => id !== userId) }
-            : f
-        );
+        const updatedFamilies = families.map(f => {
+          if (f.id === familyId) {
+            const newMemberRoles = { ...f.memberRoles };
+            delete newMemberRoles[userId];
+            return {
+              ...f,
+              memberIds: f.memberIds.filter(id => id !== userId),
+              memberRoles: newMemberRoles
+            };
+          }
+          return f;
+        });
         const updatedUsers = users.map(u =>
           u.id === userId
             ? { ...u, familyIds: u.familyIds.filter(id => id !== familyId) }
             : u
         );
         set({ families: updatedFamilies, users: updatedUsers });
+      },
+
+      updateMemberRole: (familyId: string, userId: string, role: UserRole) => {
+        const { families } = get();
+        const updatedFamilies = families.map(f => {
+          if (f.id === familyId && f.memberIds.includes(userId)) {
+            return {
+              ...f,
+              memberRoles: { ...f.memberRoles, [userId]: role }
+            };
+          }
+          return f;
+        });
+        set({ families: updatedFamilies });
+      },
+
+      getUserRoleInFamily: (familyId: string, userId: string): UserRole | null => {
+        const family = get().families.find(f => f.id === familyId);
+        if (!family) return null;
+        return family.memberRoles[userId] || null;
       },
     }),
     { name: 'auth-storage' }
