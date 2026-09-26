@@ -5,7 +5,7 @@ import { TransactionType, PaymentMethod, Currency, Transaction } from '../types'
 import { Download, Upload, Trash2, Database, RefreshCw, Check, AlertTriangle, DollarSign, LogOut, User } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { accounts, categories, transactions, addTransaction, addAccount, setDarkMode, darkMode, exchangeRates, baseCurrency, setBaseCurrency, updateExchangeRate, refreshRates, familyMembers, currentUserId, setCurrentUser } = useStore();
+  const { accounts, categories, transactions, addTransaction, addAccount, setDarkMode, darkMode, exchangeRates, baseCurrency, setBaseCurrency, updateExchangeRate, refreshRates, familyMembers, currentUserId, setCurrentUser, resetDemoData } = useStore();
   const { currentUser, logout } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<string>('');
@@ -296,6 +296,22 @@ export default function SettingsPage() {
             {importStatus}
           </div>
         )}
+      </div>
+
+      {/* Restore demo data */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
+        <h3 className="font-semibold mb-3 flex items-center gap-2 text-blue-600"><RefreshCw size={18} /> Восстановить демо-данные</h3>
+        <p className="text-sm text-gray-500 mb-3">Восстановить полные демо-данные для демо-семьи (транзакции, бюджеты, регулярные платежи).</p>
+        <button
+          onClick={() => {
+            resetDemoData();
+            setImportStatus('✅ Демо-данные восстановлены');
+            setTimeout(() => setImportStatus(''), 3000);
+          }}
+          className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300"
+        >
+          Восстановить демо-данные
+        </button>
       </div>
 
       {/* Danger zone */}
