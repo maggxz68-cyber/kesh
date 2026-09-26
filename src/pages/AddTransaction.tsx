@@ -324,19 +324,19 @@ export default function AddTransaction() {
                 />
                 <span className="text-sm">Есть чек</span>
               </label>
-              {'mediaDevices' in navigator && (
-                <button
-                  type="button"
-                  onClick={() => setShowScanner(true)}
-                  className="px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded-lg flex items-center gap-1 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
-                >
-                  <Camera size={14} /> Сканировать
-                </button>
-              )}
             </div>
 
             {hasReceipt && (
               <div className="space-y-4 pt-2 border-t border-gray-200 dark:border-gray-700">
+                {/* Scan QR button */}
+                <button
+                  type="button"
+                  onClick={() => setShowScanner(true)}
+                  className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium rounded-lg flex items-center justify-center gap-2 transition-all"
+                >
+                  <Camera size={20} />
+                  Сканировать QR-код чека
+                </button>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Номер чека</label>
