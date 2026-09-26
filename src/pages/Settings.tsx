@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useStore, exportToCSV, exportToJSON, formatCurrency } from '../store';
 import { useAuthStore } from '../store/auth';
 import { TransactionType, PaymentMethod, Currency, Transaction } from '../types';
-import { Download, Upload, Trash2, Database, RefreshCw, Check, AlertTriangle, DollarSign, LogOut, User } from 'lucide-react';
+import { Download, Upload, Trash2, Database, RefreshCw, Check, AlertTriangle, DollarSign, LogOut, User, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function SettingsPage() {
   const { accounts, categories, transactions, addTransaction, addAccount, setDarkMode, darkMode, exchangeRates, baseCurrency, setBaseCurrency, updateExchangeRate, refreshRates, familyMembers, currentUserId, setCurrentUser, resetDemoData } = useStore();
@@ -11,6 +11,7 @@ export default function SettingsPage() {
   const [importStatus, setImportStatus] = useState<string>('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [rateForm, setRateForm] = useState({ baseCode: 'USD', quoteCode: 'RUB', rate: 0 });
+  const [showExchangeRates, setShowExchangeRates] = useState(false);
 
   const handleExportCSV = () => {
     const csv = exportToCSV(transactions, accounts, categories);
@@ -211,39 +212,53 @@ export default function SettingsPage() {
       </div>
 
       {/* Exchange rates */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-        <h3 className="font-semibold mb-3 flex items-center gap-2">
-          <RefreshCw size={18} /> Курсы валют
-        </h3>
-        <div className="space-y-2 mb-4">
-          {exchangeRates.map(r => (
-            <div key={r.id} className="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/50 text-sm">
-              <span className="font-medium">{r.baseCode}/{r.quoteCode}</span>
-              <span>{r.rate.toFixed(4)}</span>
-              <span className="text-xs text-gray-500">{r.source}</span>
-            </div>
-          ))}
-        </div>
-        <button onClick={handleRefreshRates} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1 hover:bg-blue-700 mb-4">
-          <RefreshCw size={14} /> Обновить курсы
-        </button>
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
-          <p className="text-sm text-gray-500 mb-2">Ввести курс вручную:</p>
-          <div className="flex gap-2 items-end">
-            <select value={rateForm.baseCode} onChange={e => setRateForm({ ...rateForm, baseCode: e.target.value })}
-              className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-              <option value="USD">USD</option><option value="EUR">EUR</option><option value="KZT">KZT</option><option value="CNY">CNY</option>
-            </select>
-            <span className="text-sm">→</span>
-            <select value={rateForm.quoteCode} onChange={e => setRateForm({ ...rateForm, quoteCode: e.target.value })}
-              className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-              <option value="RUB">RUB</option><option value="USD">USD</option><option value="EUR">EUR</option>
-            </select>
-            <input type="number" step="0.0001" value={rateForm.rate || ''} onChange={e => setRateForm({ ...rateForm, rate: parseFloat(e.target.value) || 0 })}
-              className="w-24 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" placeholder="Курс" />
-            <button onClick={handleUpdateRate} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700">OK</button>
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setShowExchangeRates(!showExchangeRates)}
+          className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-xl transition-colors"
+        >
+          <h3 className="font-semibold flex items-center gap-2">
+            <RefreshCw size={18} /> Курсы валют
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">{exchangeRates.length} курсов</span>
+            {showExchangeRates ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </div>
-        </div>
+        </button>
+        
+        {showExchangeRates && (
+          <div className="p-4 pt-0 border-t border-gray-200 dark:border-gray-700">
+            <div className="space-y-2 mb-4">
+              {exchangeRates.map(r => (
+                <div key={r.id} className="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/50 text-sm">
+                  <span className="font-medium">{r.baseCode}/{r.quoteCode}</span>
+                  <span>{r.rate.toFixed(4)}</span>
+                  <span className="text-xs text-gray-500">{r.source}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={handleRefreshRates} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1 hover:bg-blue-700 mb-4">
+              <RefreshCw size={14} /> Обновить курсы
+            </button>
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
+              <p className="text-sm text-gray-500 mb-2">Ввести курс вручную:</p>
+              <div className="flex gap-2 items-end">
+                <select value={rateForm.baseCode} onChange={e => setRateForm({ ...rateForm, baseCode: e.target.value })}
+                  className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                  <option value="USD">USD</option><option value="EUR">EUR</option><option value="KZT">KZT</option><option value="CNY">CNY</option>
+                </select>
+                <span className="text-sm">→</span>
+                <select value={rateForm.quoteCode} onChange={e => setRateForm({ ...rateForm, quoteCode: e.target.value })}
+                  className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                  <option value="RUB">RUB</option><option value="USD">USD</option><option value="EUR">EUR</option>
+                </select>
+                <input type="number" step="0.0001" value={rateForm.rate || ''} onChange={e => setRateForm({ ...rateForm, rate: parseFloat(e.target.value) || 0 })}
+                  className="w-24 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" placeholder="Курс" />
+                <button onClick={handleUpdateRate} className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700">OK</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Theme */}
