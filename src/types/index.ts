@@ -182,6 +182,7 @@ export interface FamilyMember {
   avatar: string;
   color: string;
   joinedAt: string;
+  password?: string;
 }
 
 export interface Invite {

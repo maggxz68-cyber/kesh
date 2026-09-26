@@ -81,7 +81,7 @@ interface AppState {
   updateExchangeRate: (baseCode: string, quoteCode: string, rate: number) => void;
   refreshRates: () => void;
 
-  addFamilyMember: (member: Omit<FamilyMember, 'id' | 'joinedAt'>) => void;
+  addFamilyMember: (member: Omit<FamilyMember, 'id' | 'joinedAt' | 'userId'> & { userId?: string }) => void;
   updateMemberRole: (userId: string, role: UserRole) => void;
   removeFamilyMember: (userId: string) => void;
 
@@ -549,12 +549,10 @@ export const useStore = create<AppState>()(
         
         const familyData = get().ensureFamilyData(currentFamilyId);
         
-        // Создаём нового пользователя в authStore
-        const newUserId = `user-${Date.now()}`;
-        
-        addUser({
+        // Создаём нового пользователя в authStore и получаем его ID
+        const newUserId = addUser({
           login: member.email,
-          password: 'default123',
+          password: member.password || 'default123',
           name: member.name,
           email: member.email,
           role: member.role,

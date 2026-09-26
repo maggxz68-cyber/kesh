@@ -9,7 +9,7 @@ import { copyToClipboard } from '../utils/clipboard';
 
 export default function Family() {
   const { currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
-  const { currentFamilyId, families, currentUser, addFamilyMemberWithAccount, generateInviteCode } = useAuthStore();
+  const { currentFamilyId, families, currentUser, generateInviteCode } = useAuthStore();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', password: '', role: UserRole.USER });
   const [copied, setCopied] = useState(false);
@@ -76,26 +76,19 @@ export default function Family() {
     const colors = ['#3b82f6', '#ec4899', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4'];
     
     try {
-      // Создаём аккаунт пользователя и добавляем в семью
-      const userId = addFamilyMemberWithAccount(
-        currentFamilyId!,
-        inviteForm.name,
-        inviteForm.email,
-        inviteForm.password,
-        inviteForm.role
-      );
-
-      if (!userId) {
+      // Проверяем что email не занят
+      const { users } = useAuthStore.getState();
+      if (users.some(u => u.email === inviteForm.email)) {
         setInviteStatus({ type: 'error', message: 'Пользователь с таким email уже существует' });
         setTimeout(() => setInviteStatus(null), 3000);
         return;
       }
 
-      // Также добавляем в основной store как family member (для отображения)
+      // Добавляем участника семьи (создаёт пользователя и добавляет в семью)
       const memberData = {
-        userId,
         name: inviteForm.name,
         email: inviteForm.email,
+        password: inviteForm.password,
         role: inviteForm.role,
         avatar: avatars[Math.floor(Math.random() * avatars.length)],
         color: colors[Math.floor(Math.random() * colors.length)],
