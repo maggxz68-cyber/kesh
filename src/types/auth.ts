@@ -1,7 +1,11 @@
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
+  FAMILY_ADMIN = 'FAMILY_ADMIN', // Админ семьи
   USER = 'USER',
 }
+
+// Экспортируем для использования в других модулях
+export { UserRole as FamilyRole } from './auth';
 
 export interface User {
   id: string;
@@ -19,7 +23,9 @@ export interface Family {
   name: string;
   ownerId: string;
   memberIds: string[];
+  memberRoles: Record<string, UserRole>; // Роли участников в семье
   createdAt: string;
+  lastSync?: string; // Время последней синхронизации
 }
 
 export interface AuthState {
@@ -39,6 +45,8 @@ export interface AuthState {
   deleteUser: (userId: string) => void;
   addFamily: (name: string, ownerId: string) => string;
   deleteFamily: (familyId: string) => void;
-  addMemberToFamily: (familyId: string, userId: string) => void;
+  addMemberToFamily: (familyId: string, userId: string, role?: UserRole) => void;
   removeMemberFromFamily: (familyId: string, userId: string) => void;
+  updateMemberRole: (familyId: string, userId: string, role: UserRole) => void;
+  getUserRoleInFamily: (familyId: string, userId: string) => UserRole | null;
 }
