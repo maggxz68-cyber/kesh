@@ -19,28 +19,28 @@ export const defaultFamilyMembers: FamilyMember[] = [
 ];
 
 export const defaultCategories: Category[] = [
-  { id: uuidv4(), familyId: 'family-001', name: 'Продукты', type: TransactionType.EXPENSE, parentId: null, icon: '🛒', color: '#22c55e' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Транспорт', type: TransactionType.EXPENSE, parentId: null, icon: '🚗', color: '#3b82f6' },
-  { id: uuidv4(), familyId: 'family-001', name: 'ЖКХ', type: TransactionType.EXPENSE, parentId: null, icon: '🏠', color: '#f59e0b' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Здоровье', type: TransactionType.EXPENSE, parentId: null, icon: '💊', color: '#ef4444' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Образование', type: TransactionType.EXPENSE, parentId: null, icon: '📚', color: '#8b5cf6' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Развлечения', type: TransactionType.EXPENSE, parentId: null, icon: '🎮', color: '#ec4899' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Одежда', type: TransactionType.EXPENSE, parentId: null, icon: '👕', color: '#06b6d4' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Связь', type: TransactionType.EXPENSE, parentId: null, icon: '📱', color: '#84cc16' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Прочее', type: TransactionType.EXPENSE, parentId: null, icon: '📦', color: '#6b7280' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Зарплата', type: TransactionType.INCOME, parentId: null, icon: '💰', color: '#22c55e' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Фриланс', type: TransactionType.INCOME, parentId: null, icon: '💻', color: '#3b82f6' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Подарки', type: TransactionType.INCOME, parentId: null, icon: '🎁', color: '#ec4899' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Инвестиции', type: TransactionType.INCOME, parentId: null, icon: '📈', color: '#f59e0b' },
-  { id: uuidv4(), familyId: 'family-001', name: 'Прочие доходы', type: TransactionType.INCOME, parentId: null, icon: '💵', color: '#6b7280' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Продукты', type: TransactionType.EXPENSE, parentId: null, icon: '🛒', color: '#22c55e' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Транспорт', type: TransactionType.EXPENSE, parentId: null, icon: '🚗', color: '#3b82f6' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'ЖКХ', type: TransactionType.EXPENSE, parentId: null, icon: '🏠', color: '#f59e0b' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Здоровье', type: TransactionType.EXPENSE, parentId: null, icon: '💊', color: '#ef4444' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Образование', type: TransactionType.EXPENSE, parentId: null, icon: '📚', color: '#8b5cf6' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Развлечения', type: TransactionType.EXPENSE, parentId: null, icon: '🎮', color: '#ec4899' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Одежда', type: TransactionType.EXPENSE, parentId: null, icon: '👕', color: '#06b6d4' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Связь', type: TransactionType.EXPENSE, parentId: null, icon: '📱', color: '#84cc16' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Прочее', type: TransactionType.EXPENSE, parentId: null, icon: '📦', color: '#6b7280' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Зарплата', type: TransactionType.INCOME, parentId: null, icon: '💰', color: '#22c55e' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Фриланс', type: TransactionType.INCOME, parentId: null, icon: '💻', color: '#3b82f6' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Подарки', type: TransactionType.INCOME, parentId: null, icon: '🎁', color: '#ec4899' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Инвестиции', type: TransactionType.INCOME, parentId: null, icon: '📈', color: '#f59e0b' },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Прочие доходы', type: TransactionType.INCOME, parentId: null, icon: '💵', color: '#6b7280' },
 ];
 
 export const defaultAccounts: Account[] = [
-  { id: uuidv4(), familyId: 'family-001', name: 'Наличные', type: AccountType.CASH, currency: Currency.RUB, balance: 15000, isShared: true, createdAt: new Date().toISOString() },
-  { id: uuidv4(), familyId: 'family-001', name: 'Карта Сбербанк', type: AccountType.CARD, currency: Currency.RUB, balance: 85000, isShared: true, createdAt: new Date().toISOString() },
-  { id: uuidv4(), familyId: 'family-001', name: 'Вклад', type: AccountType.SAVINGS, currency: Currency.RUB, balance: 200000, isShared: true, createdAt: new Date().toISOString() },
-  { id: uuidv4(), familyId: 'family-001', name: 'Карта USD', type: AccountType.CARD, currency: Currency.USD, balance: 500, isShared: false, createdAt: new Date().toISOString() },
-  { id: uuidv4(), familyId: 'family-001', name: 'Наличные EUR', type: AccountType.CASH, currency: Currency.EUR, balance: 200, isShared: false, createdAt: new Date().toISOString() },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Наличные', type: AccountType.CASH, currency: Currency.RUB, balance: 15000, isShared: true, createdAt: new Date().toISOString() },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Карта Сбербанк', type: AccountType.CARD, currency: Currency.RUB, balance: 85000, isShared: true, createdAt: new Date().toISOString() },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Вклад', type: AccountType.SAVINGS, currency: Currency.RUB, balance: 200000, isShared: true, createdAt: new Date().toISOString() },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Карта USD', type: AccountType.CARD, currency: Currency.USD, balance: 500, isShared: false, createdAt: new Date().toISOString() },
+  { id: uuidv4(), familyId: 'demo-family-001', name: 'Наличные EUR', type: AccountType.CASH, currency: Currency.EUR, balance: 200, isShared: false, createdAt: new Date().toISOString() },
 ];
 
 export const defaultExchangeRates: ExchangeRate[] = [
@@ -62,7 +62,7 @@ export function generateSeedTransactions(accounts: Account[], categories: Catego
   const now = new Date();
   const transactions: Transaction[] = [
     {
-      id: uuidv4(), familyId: 'family-001', type: TransactionType.INCOME, amount: 95000, currency: Currency.RUB,
+      id: uuidv4(), familyId: 'demo-family-001', type: TransactionType.INCOME, amount: 95000, currency: Currency.RUB,
       date: new Date(now.getFullYear(), now.getMonth(), 5).toISOString(),
       accountId: cardAccount.id, toAccountId: null, categoryId: incomeCats[0].id,
       paymentMethod: PaymentMethod.CASHLESS, description: 'Зарплата за месяц',
