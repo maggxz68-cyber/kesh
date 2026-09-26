@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
+import { useAuthStore } from '../store/auth';
 import { TransactionType, PaymentMethod, Currency } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Camera } from 'lucide-react';
+import ReceiptScanner from '../components/ReceiptScanner';
 
 const transactionSchema = z.object({
   type: z.nativeEnum(TransactionType),
@@ -37,8 +39,11 @@ export default function AddTransaction() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { accounts, categories, transactions, addTransaction, updateTransaction } = useStore();
+  const { currentUser } = useAuthStore();
   const isEdit = !!id;
   const existingTx = isEdit ? transactions.find(t => t.id === id) : null;
+  const [showScanner, setShowScanner] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   const { register, handleSubmit, watch, setValue, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(transactionSchema),
@@ -127,7 +132,7 @@ export default function AddTransaction() {
       } : null,
       tags: [],
       isPrivate: false,
-      createdById: '',
+      createdById: currentUser?.id || '',
       recurringRuleId: null,
     };
 
@@ -310,6 +315,15 @@ export default function AddTransaction() {
                 />
                 <span className="text-sm">Есть чек</span>
               </label>
+              {'mediaDevices' in navigator && (
+                <button
+                  type="button"
+                  onClick={() => setShowScanner(true)}
+                  className="px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded-lg flex items-center gap-1 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
+                >
+                  <Camera size={14} /> Сканировать
+                </button>
+              )}
             </div>
 
             {hasReceipt && (
@@ -418,6 +432,33 @@ export default function AddTransaction() {
           {isEdit ? 'Сохранить изменения' : 'Добавить операцию'}
         </button>
       </form>
+
+      {/* Receipt Scanner */}
+      {showScanner && (
+        <ReceiptScanner
+          onCapture={(imageData) => {
+            setCapturedImage(imageData);
+            setShowScanner(false);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
+      {/* Captured image preview */}
+      {capturedImage && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium">Фото чека</p>
+            <button
+              onClick={() => setCapturedImage(null)}
+              className="text-xs text-red-500 hover:underline"
+            >
+              Удалить
+            </button>
+          </div>
+          <img src={capturedImage} alt="Чек" className="w-full rounded-lg max-h-48 object-contain" />
+        </div>
+      )}
     </div>
   );
 }
