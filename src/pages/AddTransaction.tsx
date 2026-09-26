@@ -7,8 +7,9 @@ import { useStore } from '../store';
 import { useAuthStore } from '../store/auth';
 import { TransactionType, PaymentMethod, Currency } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { Plus, Trash2, Save, ArrowLeft, Camera } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft, Camera, CheckCircle } from 'lucide-react';
 import ReceiptScanner from '../components/ReceiptScanner';
+import { parseReceiptQR, formatReceiptSum, formatReceiptDate, getOperationTypeLabel } from '../utils/receiptParser';
 
 const transactionSchema = z.object({
   type: z.nativeEnum(TransactionType),
@@ -43,7 +44,15 @@ export default function AddTransaction() {
   const isEdit = !!id;
   const existingTx = isEdit ? transactions.find(t => t.id === id) : null;
   const [showScanner, setShowScanner] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [scannedReceipt, setScannedReceipt] = useState<{
+    dateTime: Date;
+    totalSum: number;
+    fiscalDriveNumber: string;
+    fiscalDocumentNumber: string;
+    fiscalSign: string;
+    operationType: number;
+    raw: string;
+  } | null>(null);
 
   const { register, handleSubmit, watch, setValue, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(transactionSchema),
@@ -436,27 +445,66 @@ export default function AddTransaction() {
       {/* Receipt Scanner */}
       {showScanner && (
         <ReceiptScanner
-          onCapture={(imageData) => {
-            setCapturedImage(imageData);
+          onScan={(qrData) => {
+            const parsed = parseReceiptQR(qrData);
+            if (parsed) {
+              setScannedReceipt(parsed);
+              // Автоматически заполняем поля формы
+              setValue('amount', parsed.totalSum);
+              setValue('date', parsed.dateTime.toISOString().split('T')[0]);
+              setValue('hasReceipt', true);
+              setValue('receiptNumber', parsed.fiscalDocumentNumber);
+              setValue('receiptTotal', parsed.totalSum);
+              setValue('receiptDate', parsed.dateTime.toISOString().split('T')[0]);
+              setValue('storeName', `Чек №${parsed.fiscalDocumentNumber}`);
+            }
             setShowScanner(false);
           }}
           onClose={() => setShowScanner(false)}
         />
       )}
 
-      {/* Captured image preview */}
-      {capturedImage && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium">Фото чека</p>
+      {/* Scanned receipt info */}
+      {scannedReceipt && (
+        <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 border border-green-200 dark:border-green-800">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={20} className="text-green-600" />
+              <p className="font-medium text-green-800 dark:text-green-200">Чек распознан</p>
+            </div>
             <button
-              onClick={() => setCapturedImage(null)}
+              onClick={() => setScannedReceipt(null)}
               className="text-xs text-red-500 hover:underline"
             >
               Удалить
             </button>
           </div>
-          <img src={capturedImage} alt="Чек" className="w-full rounded-lg max-h-48 object-contain" />
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">Дата и время:</span>
+              <span className="font-medium">{formatReceiptDate(scannedReceipt.dateTime)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">Сумма:</span>
+              <span className="font-bold text-lg">{formatReceiptSum(scannedReceipt.totalSum)} ₽</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">Операция:</span>
+              <span className="font-medium">{getOperationTypeLabel(scannedReceipt.operationType)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">ФН:</span>
+              <span className="font-mono text-xs">{scannedReceipt.fiscalDriveNumber}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">ФД:</span>
+              <span className="font-mono text-xs">{scannedReceipt.fiscalDocumentNumber}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">ФП:</span>
+              <span className="font-mono text-xs">{scannedReceipt.fiscalSign}</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
