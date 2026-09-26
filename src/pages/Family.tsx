@@ -7,10 +7,15 @@ import { Users, Shield, UserPlus, Trash2, Copy, Check, Crown } from 'lucide-reac
 
 export default function Family() {
   const { familyMembers, transactions, currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
-  const { currentFamilyId, families } = useAuthStore();
+  const { currentFamilyId, families, currentUser } = useAuthStore();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: UserRole.USER });
   const [copied, setCopied] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  
+  // Проверяем, является ли текущий пользователь владельцем семьи
+  const currentFamily = families.find(f => f.id === currentFamilyId);
+  const isOwner = currentFamily?.ownerId === currentUser?.id;
 
   const memberReports = useMemo(() => {
     const now = new Date();
@@ -28,23 +33,42 @@ export default function Family() {
   }, [transactions]);
 
   const currentMember = familyMembers.find(m => m.userId === currentUserId);
-  const currentFamily = families.find(f => f.id === currentFamilyId);
   const inviteLink = `https://familybudget.app/invite/${currentFamilyId}_${Date.now().toString(36)}`;
 
   const handleInvite = () => {
-    if (!inviteForm.name.trim() || !inviteForm.email.trim()) return;
+    if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
+      setInviteStatus({ type: 'error', message: 'Заполните имя и email' });
+      setTimeout(() => setInviteStatus(null), 3000);
+      return;
+    }
+    
+    if (!isOwner) {
+      setInviteStatus({ type: 'error', message: 'Только владелец семьи может приглашать участников' });
+      setTimeout(() => setInviteStatus(null), 3000);
+      return;
+    }
+    
     const avatars = ['👨', '👩', '👦', '👧', '🧑', '👴', '👵'];
     const colors = ['#3b82f6', '#ec4899', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4'];
-    addFamilyMember({
-      userId: `user-${Date.now()}`,
-      name: inviteForm.name,
-      email: inviteForm.email,
-      role: inviteForm.role,
-      avatar: avatars[Math.floor(Math.random() * avatars.length)],
-      color: colors[Math.floor(Math.random() * colors.length)],
-    });
-    setInviteForm({ name: '', email: '', role: UserRole.USER });
-    setShowInvite(false);
+    
+    try {
+      addFamilyMember({
+        userId: `user-${Date.now()}`,
+        name: inviteForm.name,
+        email: inviteForm.email,
+        role: inviteForm.role,
+        avatar: avatars[Math.floor(Math.random() * avatars.length)],
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+      
+      setInviteStatus({ type: 'success', message: `✅ ${inviteForm.name} успешно добавлен в семью` });
+      setInviteForm({ name: '', email: '', role: UserRole.USER });
+      setShowInvite(false);
+      setTimeout(() => setInviteStatus(null), 3000);
+    } catch (error) {
+      setInviteStatus({ type: 'error', message: 'Ошибка при добавлении участника' });
+      setTimeout(() => setInviteStatus(null), 3000);
+    }
   };
 
   const getRoleBadge = (role: UserRole) => {
@@ -67,13 +91,39 @@ export default function Family() {
         <h2 className="text-2xl font-bold flex items-center gap-2">
           <Users size={24} /> {currentFamily?.name || 'Семья'}
         </h2>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1 hover:bg-blue-700"
-        >
-          <UserPlus size={16} /> Пригласить
-        </button>
+        {isOwner && (
+          <button
+            onClick={() => setShowInvite(true)}
+            className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1 hover:bg-blue-700"
+          >
+            <UserPlus size={16} /> Пригласить
+          </button>
+        )}
       </div>
+
+      {/* Status message */}
+      {inviteStatus && (
+        <div className={`p-4 rounded-xl flex items-start gap-3 ${
+          inviteStatus.type === 'success' 
+            ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+            : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+        }`}>
+          <div className={`text-sm ${
+            inviteStatus.type === 'success' ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
+          }`}>
+            {inviteStatus.message}
+          </div>
+        </div>
+      )}
+
+      {/* Owner info */}
+      {!isOwner && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+          <p className="text-sm text-blue-700 dark:text-blue-300">
+            ℹ️ Только владелец семьи может приглашать новых участников
+          </p>
+        </div>
+      )}
 
       {/* Family info */}
       <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl p-6 text-white">
@@ -83,9 +133,19 @@ export default function Family() {
       </div>
 
       {/* Invite form */}
-      {showInvite && (
+      {showInvite && isOwner && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 space-y-4">
-          <h3 className="font-semibold">Пригласить участника</h3>
+          <h3 className="font-semibold flex items-center gap-2">
+            <UserPlus size={18} className="text-blue-600" />
+            Пригласить участника
+          </h3>
+          
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              ℹ️ Новый участник получит доступ к данным семьи и сможет создавать свои транзакции
+            </p>
+          </div>
+          
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm text-gray-500 mb-1 block">Имя *</label>
@@ -105,9 +165,13 @@ export default function Family() {
               </select>
             </div>
           </div>
+          
           <div className="flex gap-2">
-            <button onClick={handleInvite} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">Отправить приглашение</button>
-            <button onClick={() => setShowInvite(false)} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm">Отмена</button>
+            <button onClick={handleInvite} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2">
+              <UserPlus size={16} />
+              Добавить участника
+            </button>
+            <button onClick={() => { setShowInvite(false); setInviteStatus(null); }} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm">Отмена</button>
           </div>
 
           {/* Invite link */}
