@@ -446,9 +446,14 @@ export default function AddTransaction() {
       {showScanner && (
         <ReceiptScanner
           onScan={(qrData) => {
+            console.log('📥 Получены данные от сканера:', qrData);
+            
             const parsed = parseReceiptQR(qrData);
+            
             if (parsed) {
+              console.log('✅ Чек успешно распарсен:', parsed);
               setScannedReceipt(parsed);
+              
               // Автоматически заполняем поля формы
               setValue('amount', parsed.totalSum);
               setValue('date', parsed.dateTime.toISOString().split('T')[0]);
@@ -457,8 +462,27 @@ export default function AddTransaction() {
               setValue('receiptTotal', parsed.totalSum);
               setValue('receiptDate', parsed.dateTime.toISOString().split('T')[0]);
               setValue('storeName', `Чек №${parsed.fiscalDocumentNumber}`);
+              
+              setShowScanner(false);
+            } else {
+              console.warn('⚠️ Не удалось распарсить QR-код');
+              console.warn('Полученные данные:', qrData);
+              
+              // Показываем предупреждение пользователю
+              alert(
+                'Не удалось распознать данные чека.\n\n' +
+                'Возможные причины:\n' +
+                '• QR-код поврежден или нечеткий\n' +
+                '• Это не фискальный чек ФНС\n' +
+                '• Формат QR-кода не поддерживается\n\n' +
+                'Попробуйте:\n' +
+                '• Сделать более четкое фото\n' +
+                '• Использовать "Ввести вручную" в сканере\n' +
+                '• Ввести данные чека вручную в форму'
+              );
+              
+              // Не закрываем сканер, чтобы пользователь мог попробовать другой способ
             }
-            setShowScanner(false);
           }}
           onClose={() => setShowScanner(false)}
         />
