@@ -3,46 +3,37 @@ import { persist } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import { User, UserRole, Family, AuthState } from '../types/auth';
 
-const ADMIN_LOGIN = 'admin';
-const ADMIN_PASSWORD = '1968';
-
-// Супер-админ — не состоит ни в какой семье
-const defaultAdmin: User = {
-  id: 'admin-001',
-  login: ADMIN_LOGIN,
-  password: ADMIN_PASSWORD,
-  name: 'Администратор системы',
+// Только супер-админ и демо-пользователь
+const SUPER_ADMIN: User = {
+  id: 'super-admin-001',
+  login: 'admin',
+  password: '1968',
+  name: 'Супер Администратор',
   email: 'admin@system.local',
   role: UserRole.SUPER_ADMIN,
   familyIds: [],
   createdAt: new Date().toISOString(),
 };
 
-// Демо-семья для ознакомления
-const DEMO_FAMILY_ID = 'demo-family';
-const DEMO_USER_ID = 'demo-user';
-
-const demoUser: User = {
-  id: DEMO_USER_ID,
+const DEMO_USER: User = {
+  id: 'demo-user-001',
   login: 'demo',
   password: 'demo',
-  name: 'Демо-пользователь',
+  name: 'Демо Пользователь',
   email: 'demo@example.com',
-  role: UserRole.USER,
-  familyIds: [DEMO_FAMILY_ID],
+  role: UserRole.FAMILY_ADMIN,
+  familyIds: ['demo-family-001'],
   createdAt: new Date().toISOString(),
 };
 
-const demoFamily: Family = {
-  id: DEMO_FAMILY_ID,
-  name: 'Демо-семья (ознакомление)',
-  ownerId: DEMO_USER_ID,
-  memberIds: [DEMO_USER_ID],
-  memberRoles: { [DEMO_USER_ID]: UserRole.FAMILY_ADMIN },
+const DEMO_FAMILY: Family = {
+  id: 'demo-family-001',
+  name: 'Демо Семья',
+  ownerId: 'demo-user-001',
+  memberIds: ['demo-user-001'],
+  memberRoles: { 'demo-user-001': UserRole.FAMILY_ADMIN },
   createdAt: new Date().toISOString(),
 };
-
-export { DEMO_FAMILY_ID, DEMO_USER_ID };
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -50,8 +41,8 @@ export const useAuthStore = create<AuthState>()(
       currentUser: null,
       currentFamilyId: null,
       isDemoMode: false,
-      users: [defaultAdmin, demoUser],
-      families: [demoFamily],
+      users: [SUPER_ADMIN, DEMO_USER],
+      families: [DEMO_FAMILY],
       isAuthenticated: false,
 
       login: (login: string, password: string) => {
@@ -59,7 +50,6 @@ export const useAuthStore = create<AuthState>()(
           u => u.login === login && u.password === password
         );
         if (user) {
-          // Супер-админ не имеет семьи
           if (user.role === UserRole.SUPER_ADMIN) {
             set({
               currentUser: user,
@@ -83,8 +73,8 @@ export const useAuthStore = create<AuthState>()(
 
       loginDemo: () => {
         set({
-          currentUser: demoUser,
-          currentFamilyId: DEMO_FAMILY_ID,
+          currentUser: DEMO_USER,
+          currentFamilyId: 'demo-family-001',
           isDemoMode: true,
           isAuthenticated: true,
         });
@@ -96,7 +86,6 @@ export const useAuthStore = create<AuthState>()(
 
       register: (name: string, email: string, password: string, familyName: string) => {
         const { users } = get();
-        // Проверка уникальности email
         if (users.some(u => u.email === email)) return false;
 
         const userId = uuidv4();
@@ -108,7 +97,7 @@ export const useAuthStore = create<AuthState>()(
           password,
           name,
           email,
-          role: UserRole.FAMILY_ADMIN, // Владелец семьи получает роль FAMILY_ADMIN
+          role: UserRole.FAMILY_ADMIN,
           familyIds: [familyId],
           createdAt: new Date().toISOString(),
         };
@@ -118,7 +107,7 @@ export const useAuthStore = create<AuthState>()(
           name: familyName,
           ownerId: userId,
           memberIds: [userId],
-          memberRoles: { [userId]: UserRole.FAMILY_ADMIN }, // Владелец - админ семьи
+          memberRoles: { [userId]: UserRole.FAMILY_ADMIN },
           createdAt: new Date().toISOString(),
         };
 
@@ -173,7 +162,7 @@ export const useAuthStore = create<AuthState>()(
           name,
           ownerId,
           memberIds: [ownerId],
-          memberRoles: { [ownerId]: UserRole.FAMILY_ADMIN }, // Владелец - админ семьи
+          memberRoles: { [ownerId]: UserRole.FAMILY_ADMIN },
           createdAt: new Date().toISOString(),
         };
 

@@ -4,6 +4,7 @@ import { useStore } from './store';
 import { useAuthStore } from './store/auth';
 import { UserRole } from './types/auth';
 import { setupCrossTabSync } from './utils/sync';
+import { autoUpdateExchangeRates } from './utils/exchangeRates';
 import { LayoutDashboard, ArrowRightLeft, PlusCircle, Receipt, FolderTree, Wallet, BarChart3, Settings, Sun, Moon, Menu, X, Target, Repeat, Users, Shield, LogOut, RefreshCw } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
@@ -76,6 +77,7 @@ function Layout() {
   useEffect(() => { 
     init();
     setupCrossTabSync(); // Инициализация синхронизации между вкладками
+    autoUpdateExchangeRates(); // Автоматическое обновление курсов валют с ЦБ РФ
   }, [init]);
 
   useEffect(() => {

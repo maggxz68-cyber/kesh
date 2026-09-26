@@ -4,10 +4,13 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   Account, Category, Transaction, TransactionType, PaymentMethod, Currency,
   FilterState, Budget, BudgetPeriod, BudgetType, BudgetScope,
-  RecurringRule, RecurFreq, RecurMode, ExchangeRate, FamilyMember, FamilyRole,
+  RecurringRule, RecurFreq, RecurMode, ExchangeRate, FamilyMember,
   BudgetProgress, UpcomingPayment, ForecastPoint,
 } from '../types';
-import { useAuthStore, DEMO_FAMILY_ID } from './auth';
+import { UserRole } from '../types/auth';
+import { useAuthStore } from './auth';
+
+const DEMO_FAMILY_ID = 'demo-family-001';
 import {
   defaultAccounts, defaultCategories, generateSeedTransactions,
   generateSeedBudgets, generateSeedRecurring, defaultExchangeRates,
@@ -70,7 +73,7 @@ interface AppState {
   refreshRates: () => void;
 
   addFamilyMember: (member: Omit<FamilyMember, 'id' | 'joinedAt'>) => void;
-  updateMemberRole: (userId: string, role: FamilyRole) => void;
+  updateMemberRole: (userId: string, role: UserRole) => void;
   removeFamilyMember: (userId: string) => void;
 
   // Computed
@@ -142,17 +145,34 @@ export const useStore = create<AppState>()(
       ensureFamilyData: (familyId: string) => {
         const { familiesData } = get();
         if (familiesData[familyId]) return familiesData[familyId];
-        // Создаём пустые данные для новой семьи
-        const emptyData: FamilyData = {
-          accounts: [],
-          categories: defaultCategories.map(c => ({ ...c, id: uuidv4(), familyId })),
+        
+        // Создаём данные для новой семьи с демо-справочниками (без транзакций)
+        const newFamilyData: FamilyData = {
+          // Демо-счета с нулевыми балансами
+          accounts: defaultAccounts.map(a => ({ 
+            ...a, 
+            id: uuidv4(), 
+            familyId,
+            balance: 0 // Новые семьи начинают с нулевыми балансами
+          })),
+          // Демо-категории
+          categories: defaultCategories.map(c => ({ 
+            ...c, 
+            id: uuidv4(), 
+            familyId 
+          })),
+          // Пустые транзакции (без доходов и расходов)
           transactions: [],
+          // Пустые бюджеты
           budgets: [],
+          // Пустые регулярные платежи
           recurringRules: [],
+          // Пустые участники (будут добавлены через auth store)
           familyMembers: [],
         };
-        set({ familiesData: { ...familiesData, [familyId]: emptyData } });
-        return emptyData;
+        
+        set({ familiesData: { ...familiesData, [familyId]: newFamilyData } });
+        return newFamilyData;
       },
 
       addAccount: (account) => {

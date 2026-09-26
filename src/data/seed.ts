@@ -3,16 +3,17 @@ import {
   Account, AccountType, Category, Currency, PaymentMethod, Transaction, TransactionType,
   Budget, BudgetPeriod, BudgetType, BudgetScope,
   RecurringRule, RecurFreq, RecurMode,
-  ExchangeRate, FamilyMember, FamilyRole,
+  ExchangeRate, FamilyMember,
 } from '../types';
+import { UserRole } from '../types/auth';
 
 export const OWNER_ID = 'user-owner-001';
 export const MEMBER_IDS = ['user-owner-001', 'user-wife-002', 'user-kid-003'];
 
 export const defaultFamilyMembers: FamilyMember[] = [
-  { id: uuidv4(), userId: OWNER_ID, name: 'Иван Петров', email: 'ivan@mail.ru', role: FamilyRole.OWNER, avatar: '👨', color: '#3b82f6', joinedAt: new Date().toISOString() },
-  { id: uuidv4(), userId: 'user-wife-002', name: 'Мария Петрова', email: 'maria@mail.ru', role: FamilyRole.ADMIN, avatar: '👩', color: '#ec4899', joinedAt: new Date().toISOString() },
-  { id: uuidv4(), userId: 'user-kid-003', name: 'Алексей Петров', email: 'alex@mail.ru', role: FamilyRole.MEMBER, avatar: '👦', color: '#22c55e', joinedAt: new Date().toISOString() },
+  { id: uuidv4(), userId: OWNER_ID, name: 'Иван Петров', email: 'ivan@mail.ru', role: UserRole.FAMILY_ADMIN, avatar: '👨', color: '#3b82f6', joinedAt: new Date().toISOString() },
+  { id: uuidv4(), userId: 'user-wife-002', name: 'Мария Петрова', email: 'maria@mail.ru', role: UserRole.FAMILY_ADMIN, avatar: '👩', color: '#ec4899', joinedAt: new Date().toISOString() },
+  { id: uuidv4(), userId: 'user-kid-003', name: 'Алексей Петров', email: 'alex@mail.ru', role: UserRole.USER, avatar: '👦', color: '#22c55e', joinedAt: new Date().toISOString() },
 ];
 
 export const defaultCategories: Category[] = [
