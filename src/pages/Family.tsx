@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/auth';
 import { UserRole } from '../types/auth';
 import { TransactionType } from '../types';
 import { Users, Shield, UserPlus, Trash2, Copy, Check, Crown } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 
 export default function Family() {
   const { currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
@@ -13,29 +14,24 @@ export default function Family() {
   const [copied, setCopied] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   
-  // Получаем данные семьи через селекторы (реактивно)
-  const familyMembers = useStore(state => {
-    const data = state.getCurrentFamilyData();
-    return data?.familyMembers || [];
-  });
+  // Получаем данные семьи через shallow-селекторы (без бесконечного цикла)
+  const familyMembers = useStore(
+    useShallow(state => {
+      const data = state.getCurrentFamilyData();
+      return data?.familyMembers || [];
+    })
+  );
   
-  const transactions = useStore(state => {
-    const data = state.getCurrentFamilyData();
-    return data?.transactions || [];
-  });
+  const transactions = useStore(
+    useShallow(state => {
+      const data = state.getCurrentFamilyData();
+      return data?.transactions || [];
+    })
+  );
   
   // Проверяем, является ли текущий пользователь владельцем семьи
   const currentFamily = families.find(f => f.id === currentFamilyId);
   const isOwner = currentFamily?.ownerId === currentUser?.id;
-  
-  console.log('🔍 Family page render:', {
-    currentFamilyId,
-    currentUser: currentUser?.id,
-    currentFamily: currentFamily?.id,
-    currentFamilyOwner: currentFamily?.ownerId,
-    isOwner,
-    familyMembersCount: familyMembers.length,
-  });
 
   const memberReports = useMemo(() => {
     const now = new Date();
@@ -56,21 +52,13 @@ export default function Family() {
   const inviteLink = `https://familybudget.app/invite/${currentFamilyId}_${Date.now().toString(36)}`;
 
   const handleInvite = () => {
-    console.log('🔍 handleInvite вызван');
-    console.log('🔍 inviteForm:', inviteForm);
-    console.log('🔍 isOwner:', isOwner);
-    console.log('🔍 currentFamily:', currentFamily);
-    console.log('🔍 currentUser:', currentUser);
-    
     if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
-      console.error('❌ Имя или email не заполнены');
       setInviteStatus({ type: 'error', message: 'Заполните имя и email' });
       setTimeout(() => setInviteStatus(null), 3000);
       return;
     }
     
     if (!isOwner) {
-      console.error('❌ Пользователь не является владельцем');
       setInviteStatus({ type: 'error', message: 'Только владелец семьи может приглашать участников' });
       setTimeout(() => setInviteStatus(null), 3000);
       return;
@@ -88,18 +76,13 @@ export default function Family() {
       color: colors[Math.floor(Math.random() * colors.length)],
     };
     
-    console.log('🔍 Вызываем addFamilyMember с данными:', memberData);
-    
     try {
       addFamilyMember(memberData);
-      console.log('✅ addFamilyMember выполнен успешно');
-      
       setInviteStatus({ type: 'success', message: `✅ ${inviteForm.name} успешно добавлен в семью` });
       setInviteForm({ name: '', email: '', role: UserRole.USER });
       setShowInvite(false);
       setTimeout(() => setInviteStatus(null), 3000);
     } catch (error) {
-      console.error('❌ Ошибка при добавлении участника:', error);
       setInviteStatus({ type: 'error', message: 'Ошибка при добавлении участника' });
       setTimeout(() => setInviteStatus(null), 3000);
     }
