@@ -131,13 +131,15 @@ export const useAuthStore = create<AuthState>()(
       },
 
       addUser: (userData) => {
+        const userId = uuidv4();
         const newUser: User = {
           ...userData,
-          id: uuidv4(),
+          id: userId,
           familyIds: [],
           createdAt: new Date().toISOString(),
         };
         set({ users: [...get().users, newUser] });
+        return userId;
       },
 
       deleteUser: (userId: string) => {
@@ -250,6 +252,154 @@ export const useAuthStore = create<AuthState>()(
         const family = get().families.find(f => f.id === familyId);
         if (!family) return null;
         return family.memberRoles[userId] || null;
+      },
+
+      addFamilyMemberWithAccount: (familyId: string, name: string, email: string, password: string, role: UserRole = UserRole.USER) => {
+        const { users, families } = get();
+        
+        // Проверяем что email уникален
+        if (users.some(u => u.email === email)) return null;
+        
+        // Проверяем что семья существует
+        const family = families.find(f => f.id === familyId);
+        if (!family) return null;
+
+        const userId = uuidv4();
+        
+        // Создаём нового пользователя
+        const newUser: User = {
+          id: userId,
+          login: email,
+          password,
+          name,
+          email,
+          role,
+          familyIds: [familyId],
+          createdAt: new Date().toISOString(),
+        };
+
+        // Добавляем пользователя в семью
+        const updatedFamilies = families.map(f => {
+          if (f.id === familyId) {
+            return {
+              ...f,
+              memberIds: [...f.memberIds, userId],
+              memberRoles: { ...f.memberRoles, [userId]: role }
+            };
+          }
+          return f;
+        });
+
+        set({
+          users: [...users, newUser],
+          families: updatedFamilies,
+        });
+
+        return userId;
+      },
+
+      generateInviteCode: (familyId: string): string => {
+        const { families, users } = get();
+        const family = families.find(f => f.id === familyId);
+        if (!family) return '';
+
+        // Создаём код приглашения с данными семьи
+        const inviteData = {
+          type: 'family-invite',
+          version: '1.0',
+          familyId: family.id,
+          familyName: family.name,
+          timestamp: new Date().toISOString(),
+        };
+
+        return btoa(encodeURIComponent(JSON.stringify(inviteData)));
+      },
+
+      joinFamilyByCode: (code: string, name: string, email: string, password: string): boolean => {
+        try {
+          const json = decodeURIComponent(atob(code));
+          const inviteData = JSON.parse(json);
+          
+          if (inviteData.type !== 'family-invite') return false;
+
+          const { users, families } = get();
+          
+          // Проверяем что email уникален
+          if (users.some(u => u.email === email)) return false;
+
+          const userId = uuidv4();
+          const familyId = inviteData.familyId;
+          
+          // Проверяем существует ли уже эта семья на этом устройстве
+          const existingFamily = families.find(f => f.id === familyId);
+          
+          if (existingFamily) {
+            // Семья уже есть — просто добавляем пользователя
+            const newUser: User = {
+              id: userId,
+              login: email,
+              password,
+              name,
+              email,
+              role: UserRole.USER,
+              familyIds: [familyId],
+              createdAt: new Date().toISOString(),
+            };
+
+            const updatedFamilies = families.map(f => {
+              if (f.id === familyId && !f.memberIds.includes(userId)) {
+                return {
+                  ...f,
+                  memberIds: [...f.memberIds, userId],
+                  memberRoles: { ...f.memberRoles, [userId]: UserRole.USER }
+                };
+              }
+              return f;
+            });
+
+            set({
+              users: [...users, newUser],
+              families: updatedFamilies,
+              currentUser: newUser,
+              currentFamilyId: familyId,
+              isAuthenticated: true,
+            });
+          } else {
+            // Семьи нет на этом устройстве — создаём её
+            const newUser: User = {
+              id: userId,
+              login: email,
+              password,
+              name,
+              email,
+              role: UserRole.USER,
+              familyIds: [familyId],
+              createdAt: new Date().toISOString(),
+            };
+
+            const newFamily: Family = {
+              id: familyId,
+              name: inviteData.familyName,
+              ownerId: userId, // Первый кто присоединился на этом устройстве
+              memberIds: [userId],
+              memberRoles: { [userId]: UserRole.USER },
+              createdAt: inviteData.timestamp,
+            };
+
+            set({
+              users: [...users, newUser],
+              families: [...families, newFamily],
+              currentUser: newUser,
+              currentFamilyId: familyId,
+              isAuthenticated: true,
+            });
+          }
+
+          return true;
+        } catch (error) {
+          console.error('Ошибка при присоединении по коду:', error);
+          return false;
+        }
       },
     }),
     { name: 'auth-storage' }

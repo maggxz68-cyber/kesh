@@ -41,7 +41,7 @@ export interface AuthState {
   logout: () => void;
   register: (name: string, email: string, password: string, familyName: string) => boolean;
   setCurrentFamily: (familyId: string) => void;
-  addUser: (user: Omit<User, 'id' | 'createdAt' | 'familyIds'>) => void;
+  addUser: (user: Omit<User, 'id' | 'createdAt' | 'familyIds'>) => string;
   deleteUser: (userId: string) => void;
   addFamily: (name: string, ownerId: string) => string;
   deleteFamily: (familyId: string) => void;
@@ -49,4 +49,7 @@ export interface AuthState {
   removeMemberFromFamily: (familyId: string, userId: string) => void;
   updateMemberRole: (familyId: string, userId: string, role: UserRole) => void;
   getUserRoleInFamily: (familyId: string, userId: string) => UserRole | null;
+  addFamilyMemberWithAccount: (familyId: string, name: string, email: string, password: string, role?: UserRole) => string | null;
+  joinFamilyByCode: (code: string, name: string, email: string, password: string) => boolean;
+  generateInviteCode: (familyId: string) => string;
 }

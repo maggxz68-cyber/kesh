@@ -8,9 +8,9 @@ import { useShallow } from 'zustand/react/shallow';
 
 export default function Family() {
   const { currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
-  const { currentFamilyId, families, currentUser } = useAuthStore();
+  const { currentFamilyId, families, currentUser, addFamilyMemberWithAccount, generateInviteCode } = useAuthStore();
   const [showInvite, setShowInvite] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: UserRole.USER });
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', password: '', role: UserRole.USER });
   const [copied, setCopied] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   
@@ -49,11 +49,18 @@ export default function Family() {
   }, [transactions]);
 
   const currentMember = familyMembers.find(m => m.userId === currentUserId);
-  const inviteLink = `https://familybudget.app/invite/${currentFamilyId}_${Date.now().toString(36)}`;
+  const inviteCode = currentFamilyId ? generateInviteCode(currentFamilyId) : '';
+  const inviteLink = inviteCode;
 
   const handleInvite = () => {
-    if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
-      setInviteStatus({ type: 'error', message: 'Заполните имя и email' });
+    if (!inviteForm.name.trim() || !inviteForm.email.trim() || !inviteForm.password.trim()) {
+      setInviteStatus({ type: 'error', message: 'Заполните имя, email и пароль' });
+      setTimeout(() => setInviteStatus(null), 3000);
+      return;
+    }
+    
+    if (inviteForm.password.length < 4) {
+      setInviteStatus({ type: 'error', message: 'Пароль должен быть не менее 4 символов' });
       setTimeout(() => setInviteStatus(null), 3000);
       return;
     }
@@ -67,21 +74,40 @@ export default function Family() {
     const avatars = ['👨', '👩', '👦', '👧', '🧑', '👴', '👵'];
     const colors = ['#3b82f6', '#ec4899', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4'];
     
-    const memberData = {
-      userId: `user-${Date.now()}`,
-      name: inviteForm.name,
-      email: inviteForm.email,
-      role: inviteForm.role,
-      avatar: avatars[Math.floor(Math.random() * avatars.length)],
-      color: colors[Math.floor(Math.random() * colors.length)],
-    };
-    
     try {
+      // Создаём аккаунт пользователя и добавляем в семью
+      const userId = addFamilyMemberWithAccount(
+        currentFamilyId!,
+        inviteForm.name,
+        inviteForm.email,
+        inviteForm.password,
+        inviteForm.role
+      );
+
+      if (!userId) {
+        setInviteStatus({ type: 'error', message: 'Пользователь с таким email уже существует' });
+        setTimeout(() => setInviteStatus(null), 3000);
+        return;
+      }
+
+      // Также добавляем в основной store как family member (для отображения)
+      const memberData = {
+        userId,
+        name: inviteForm.name,
+        email: inviteForm.email,
+        role: inviteForm.role,
+        avatar: avatars[Math.floor(Math.random() * avatars.length)],
+        color: colors[Math.floor(Math.random() * colors.length)],
+      };
       addFamilyMember(memberData);
-      setInviteStatus({ type: 'success', message: `✅ ${inviteForm.name} успешно добавлен в семью` });
-      setInviteForm({ name: '', email: '', role: UserRole.USER });
+
+      setInviteStatus({ 
+        type: 'success', 
+        message: `✅ ${inviteForm.name} успешно добавлен(а). Логин: ${inviteForm.email}, Пароль: ${inviteForm.password}` 
+      });
+      setInviteForm({ name: '', email: '', password: '', role: UserRole.USER });
       setShowInvite(false);
-      setTimeout(() => setInviteStatus(null), 3000);
+      setTimeout(() => setInviteStatus(null), 5000);
     } catch (error) {
       setInviteStatus({ type: 'error', message: 'Ошибка при добавлении участника' });
       setTimeout(() => setInviteStatus(null), 3000);
@@ -170,9 +196,14 @@ export default function Family() {
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" placeholder="Имя Фамилия" />
             </div>
             <div>
-              <label className="text-sm text-gray-500 mb-1 block">Email *</label>
+              <label className="text-sm text-gray-500 mb-1 block">Email (будет логином) *</label>
               <input type="email" value={inviteForm.email} onChange={e => setInviteForm({ ...inviteForm, email: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" placeholder="email@example.com" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-500 mb-1 block">Пароль для входа *</label>
+              <input type="text" value={inviteForm.password} onChange={e => setInviteForm({ ...inviteForm, password: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" placeholder="Минимум 4 символа" />
             </div>
             <div>
               <label className="text-sm text-gray-500 mb-1 block">Роль</label>
@@ -193,7 +224,7 @@ export default function Family() {
 
           {/* Invite link */}
           <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-            <p className="text-sm text-gray-500 mb-2">Или поделитесь ссылкой-приглашением:</p>
+            <p className="text-sm text-gray-500 mb-2">Код приглашения (для входа на другом устройстве):</p>
             <div className="flex gap-2">
               <input type="text" readOnly value={inviteLink} className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm font-mono" />
               <button onClick={handleCopyLink} className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm flex items-center gap-1 hover:bg-gray-50 dark:hover:bg-gray-700">
