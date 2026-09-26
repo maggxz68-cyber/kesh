@@ -3,11 +3,11 @@ import { useStore, formatCurrency } from '../store';
 import { useAuthStore } from '../store/auth';
 import { UserRole } from '../types/auth';
 import { TransactionType } from '../types';
-import { Users, Shield, UserPlus, Trash2, Edit3, Copy, Check, Crown, Settings } from 'lucide-react';
+import { Users, Shield, UserPlus, Trash2, Copy, Check, Crown } from 'lucide-react';
 
 export default function Family() {
   const { familyMembers, transactions, currentUserId, updateMemberRole, removeFamilyMember, addFamilyMember } = useStore();
-  const { currentFamilyId, families, updateMemberRole: updateAuthMemberRole } = useAuthStore();
+  const { currentFamilyId, families } = useAuthStore();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: UserRole.USER });
   const [copied, setCopied] = useState(false);
@@ -28,7 +28,8 @@ export default function Family() {
   }, [transactions]);
 
   const currentMember = familyMembers.find(m => m.userId === currentUserId);
-  const inviteLink = `https://fintracker.app/invite/tkn_${Date.now().toString(36)}`;
+  const currentFamily = families.find(f => f.id === currentFamilyId);
+  const inviteLink = `https://familybudget.app/invite/${currentFamilyId}_${Date.now().toString(36)}`;
 
   const handleInvite = () => {
     if (!inviteForm.name.trim() || !inviteForm.email.trim()) return;
@@ -42,16 +43,15 @@ export default function Family() {
       avatar: avatars[Math.floor(Math.random() * avatars.length)],
       color: colors[Math.floor(Math.random() * colors.length)],
     });
-    setInviteForm({ name: '', email: '', role: FamilyRole.MEMBER });
+    setInviteForm({ name: '', email: '', role: UserRole.USER });
     setShowInvite(false);
   };
 
-  const getRoleBadge = (role: FamilyRole) => {
+  const getRoleBadge = (role: UserRole) => {
     switch (role) {
-      case FamilyRole.OWNER: return <span className="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 flex items-center gap-1"><Crown size={10} />Владелец</span>;
-      case FamilyRole.ADMIN: return <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 flex items-center gap-1"><Shield size={10} />Админ</span>;
-      case FamilyRole.MEMBER: return <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Участник</span>;
-      case FamilyRole.VIEWER: return <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">Наблюдатель</span>;
+      case UserRole.FAMILY_ADMIN: return <span className="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 flex items-center gap-1"><Crown size={10} />Админ семьи</span>;
+      case UserRole.USER: return <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Участник</span>;
+      default: return null;
     }
   };
 
@@ -65,7 +65,7 @@ export default function Family() {
     <div className="space-y-6 pb-20 lg:pb-0">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Users size={24} /> Семья Петровых
+          <Users size={24} /> {currentFamily?.name || 'Семья'}
         </h2>
         <button
           onClick={() => setShowInvite(true)}
@@ -78,7 +78,7 @@ export default function Family() {
       {/* Family info */}
       <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl p-6 text-white">
         <p className="text-sm opacity-80">Семейный аккаунт</p>
-        <p className="text-xl font-bold mt-1">Семья Петровых</p>
+        <p className="text-xl font-bold mt-1">{currentFamily?.name || 'Семья'}</p>
         <p className="text-sm opacity-80 mt-2">{familyMembers.length} участников · Базовая валюта: RUB</p>
       </div>
 
@@ -99,11 +99,9 @@ export default function Family() {
             </div>
             <div>
               <label className="text-sm text-gray-500 mb-1 block">Роль</label>
-              <select value={inviteForm.role} onChange={e => setInviteForm({ ...inviteForm, role: e.target.value as FamilyRole })}
+              <select value={inviteForm.role} onChange={e => setInviteForm({ ...inviteForm, role: e.target.value as UserRole })}
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700">
-                <option value={FamilyRole.ADMIN}>Администратор</option>
-                <option value={FamilyRole.MEMBER}>Участник</option>
-                <option value={FamilyRole.VIEWER}>Наблюдатель</option>
+                <option value={UserRole.USER}>Участник</option>
               </select>
             </div>
           </div>
@@ -156,17 +154,8 @@ export default function Family() {
                       <p className="text-gray-500">{report.count} операций</p>
                     </div>
                   )}
-                  {!isCurrentUser && member.role !== FamilyRole.OWNER && (
+                  {!isCurrentUser && (
                     <div className="flex gap-1 mt-2 justify-end">
-                      <select
-                        value={member.role}
-                        onChange={e => updateMemberRole(member.userId, e.target.value as FamilyRole)}
-                        className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
-                      >
-                        <option value={FamilyRole.ADMIN}>Админ</option>
-                        <option value={FamilyRole.MEMBER}>Участник</option>
-                        <option value={FamilyRole.VIEWER}>Наблюдатель</option>
-                      </select>
                       <button onClick={() => { if (confirm('Удалить участника?')) removeFamilyMember(member.userId); }}
                         className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
                         <Trash2 size={14} />
@@ -211,20 +200,12 @@ export default function Family() {
         <h3 className="font-semibold mb-3">Роли и права</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           <div className="p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/10">
-            <p className="font-medium flex items-center gap-1"><Crown size={14} className="text-yellow-600" /> Владелец</p>
-            <p className="text-xs text-gray-500 mt-1">Полный доступ, управление участниками</p>
-          </div>
-          <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/10">
-            <p className="font-medium flex items-center gap-1"><Shield size={14} className="text-blue-600" /> Администратор</p>
-            <p className="text-xs text-gray-500 mt-1">Приглашать, редактировать все операции</p>
+            <p className="font-medium flex items-center gap-1"><Crown size={14} className="text-yellow-600" /> Админ семьи</p>
+            <p className="text-xs text-gray-500 mt-1">Полный доступ, управление участниками, счетами, категориями и бюджетами</p>
           </div>
           <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/10">
             <p className="font-medium">Участник</p>
-            <p className="text-xs text-gray-500 mt-1">Создавать свои операции, видеть общие</p>
-          </div>
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-            <p className="font-medium">Наблюдатель</p>
-            <p className="text-xs text-gray-500 mt-1">Только просмотр данных</p>
+            <p className="text-xs text-gray-500 mt-1">Создавать свои операции, видеть общие данные</p>
           </div>
         </div>
       </div>

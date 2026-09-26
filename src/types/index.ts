@@ -1,3 +1,5 @@
+import { UserRole } from './auth';
+
 export enum TransactionType {
   INCOME = 'INCOME',
   EXPENSE = 'EXPENSE',
@@ -52,12 +54,8 @@ export enum RecurMode {
   MANUAL = 'MANUAL',
 }
 
-export enum FamilyRole {
-  OWNER = 'OWNER',
-  ADMIN = 'ADMIN',
-  MEMBER = 'MEMBER',
-  VIEWER = 'VIEWER',
-}
+// FamilyRole импортируется из auth.ts как UserRole
+export { UserRole as FamilyRole } from './auth';
 
 export interface Account {
   id: string;
@@ -180,7 +178,7 @@ export interface FamilyMember {
   userId: string;
   name: string;
   email: string;
-  role: FamilyRole;
+  role: UserRole;
   avatar: string;
   color: string;
   joinedAt: string;
@@ -190,7 +188,7 @@ export interface Invite {
   id: string;
   email: string;
   token: string;
-  role: FamilyRole;
+  role: UserRole;
   expiresAt: string;
   acceptedAt: string | null;
 }
