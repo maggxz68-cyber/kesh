@@ -539,16 +539,47 @@ export const useStore = create<AppState>()(
       },
 
       addFamilyMember: (member) => {
-        const { currentFamilyId } = useAuthStore.getState();
-        if (!currentFamilyId) return;
+        const { currentFamilyId, currentUser, users, families, addUser, addMemberToFamily } = useAuthStore.getState();
+        if (!currentFamilyId || !currentUser) return;
+        
+        // Проверяем, что текущий пользователь - админ семьи
+        const family = families.find(f => f.id === currentFamilyId);
+        if (!family || family.ownerId !== currentUser.id) {
+          console.error('❌ Только владелец семьи может добавлять участников');
+          return;
+        }
+        
         const familyData = get().ensureFamilyData(currentFamilyId);
-        const newMember: FamilyMember = { ...member, id: uuidv4(), joinedAt: new Date().toISOString() };
+        
+        // Создаём нового пользователя в authStore
+        const newUserId = `user-${Date.now()}`;
+        addUser({
+          login: member.email,
+          password: 'default123', // Временный пароль
+          name: member.name,
+          email: member.email,
+          role: member.role,
+        });
+        
+        // Добавляем пользователя в семью
+        addMemberToFamily(currentFamilyId, newUserId, member.role);
+        
+        // Добавляем члена семьи в familiesData
+        const newMember: FamilyMember = { 
+          ...member, 
+          userId: newUserId,
+          id: uuidv4(), 
+          joinedAt: new Date().toISOString() 
+        };
+        
         set({
           familiesData: {
             ...get().familiesData,
             [currentFamilyId]: { ...familyData, familyMembers: [...familyData.familyMembers, newMember] },
           },
         });
+        
+        console.log('✅ Участник семьи добавлен:', newMember.name);
       },
 
       updateMemberRole: (userId, role) => {
