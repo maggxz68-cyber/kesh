@@ -3,8 +3,6 @@ import { HashRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react
 import { useStore } from './store';
 import { useAuthStore } from './store/auth';
 import { UserRole } from './types/auth';
-import { setupCrossTabSync } from './utils/sync';
-import { autoUpdateExchangeRates } from './utils/exchangeRates';
 import { LayoutDashboard, ArrowRightLeft, PlusCircle, Receipt, FolderTree, Wallet, BarChart3, Settings, Sun, Moon, Menu, X, Target, Repeat, Users, Shield, LogOut, RefreshCw } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
@@ -70,15 +68,19 @@ function AuthPage() {
 
 function Layout() {
   const { darkMode, setDarkMode, init, initialized, familyMembers, currentUserId } = useStore();
-  const { currentUser, currentFamilyId, families, setCurrentFamily, logout, isDemoMode } = useAuthStore();
+  const { currentUser, currentFamilyId, families, setCurrentFamily, logout, isDemoMode, restoreSession, isAuthenticated } = useAuthStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showFamilySelector, setShowFamilySelector] = useState(false);
+  const [sessionRestored, setSessionRestored] = useState(false);
 
-  useEffect(() => { 
-    init();
-    setupCrossTabSync(); // Инициализация синхронизации между вкладками
-    autoUpdateExchangeRates(); // Автоматическое обновление курсов валют с ЦБ РФ
-  }, [init]);
+  useEffect(() => {
+    if (!sessionRestored) {
+      restoreSession().then(() => {
+        setSessionRestored(true);
+        init();
+      });
+    }
+  }, [sessionRestored, restoreSession, init]);
 
   // Синхронизация currentUserId с currentUser при входе
   useEffect(() => {
@@ -93,7 +95,7 @@ function Layout() {
     else document.documentElement.classList.remove('dark');
   }, [darkMode]);
 
-  if (!initialized) return null;
+  if (!sessionRestored || !initialized) return null;
 
   const currentMember = familyMembers.find(m => m.userId === currentUserId);
   const isAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
