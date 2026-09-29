@@ -659,6 +659,18 @@ app.get('/api/families/:familyId/data', authMiddleware, familyAccess, (req, res)
 });
 
 // ==========================================
+// HEALTH CHECK
+// ==========================================
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    database: 'sqlite'
+  });
+});
+
+// ==========================================
 // ADMIN ROUTES
 // ==========================================
 app.get('/api/admin/users', authMiddleware, (req, res) => {
