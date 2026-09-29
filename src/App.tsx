@@ -19,7 +19,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import SelectFamily from './pages/SelectFamily';
 import AdminPanel from './pages/AdminPanel';
-import Sync from './pages/Sync';
+
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Дашборд' },
@@ -32,7 +32,7 @@ const navItems = [
   { to: '/accounts', icon: Wallet, label: 'Счета' },
   { to: '/reports', icon: BarChart3, label: 'Отчёты' },
   { to: '/family', icon: Users, label: 'Семья' },
-  { to: '/sync', icon: RefreshCw, label: 'Синхронизация' },
+
   { to: '/admin', icon: Shield, label: 'Админ', adminOnly: true },
   { to: '/settings', icon: Settings, label: 'Настройки' },
 ];
@@ -245,7 +245,7 @@ function Layout() {
               <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
               <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
               <Route path="/family" element={<ProtectedRoute><Family /></ProtectedRoute>} />
-              <Route path="/sync" element={<ProtectedRoute><Sync /></ProtectedRoute>} />
+
               <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
               <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
               <Route path="*" element={<Navigate to="/" />} />
