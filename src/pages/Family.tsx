@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useStore, formatCurrency } from '../store';
 import { useAuthStore } from '../store/auth';
 import { UserRole } from '../types/auth';
@@ -50,8 +50,13 @@ export default function Family() {
   }, [transactions]);
 
   const currentMember = familyMembers.find(m => m.userId === currentUserId);
-  const inviteCode = currentFamilyId ? generateInviteCode(currentFamilyId) : '';
-  const inviteLink = inviteCode;
+  const [inviteLink, setInviteLink] = useState('');
+  
+  useEffect(() => {
+    if (currentFamilyId) {
+      generateInviteCode(currentFamilyId).then(code => setInviteLink(code));
+    }
+  }, [currentFamilyId, generateInviteCode]);
 
   const handleInvite = () => {
     if (!inviteForm.name.trim() || !inviteForm.email.trim() || !inviteForm.password.trim()) {

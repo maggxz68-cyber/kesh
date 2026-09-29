@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { useStore, exportToCSV, exportToJSON, formatCurrency } from '../store';
+import { useStore, exportToCSV, formatCurrency } from '../store';
 import { useAuthStore } from '../store/auth';
 import { TransactionType, PaymentMethod, Currency, Transaction } from '../types';
 import { Download, Upload, Trash2, Database, RefreshCw, Check, AlertTriangle, DollarSign, LogOut, User, ChevronDown, ChevronUp } from 'lucide-react';
@@ -43,7 +43,7 @@ export default function SettingsPage() {
 
   const handleExportJSON = () => {
     const data = { accounts, categories, transactions, budgets: [], recurringRules: [], exchangeRates, exportDate: new Date().toISOString(), version: '2.0' };
-    const json = exportToJSON(data);
+    const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

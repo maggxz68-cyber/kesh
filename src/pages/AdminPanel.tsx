@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useAuthStore } from '../store/auth';
 import { UserRole } from '../types/auth';
-import { downloadBackup, restoreFromBackup, loadBackupFromFile, FullBackup } from '../utils/backup';
 import { 
   Users, UserPlus, Trash2, Shield, Crown, AlertTriangle, 
   Home, Edit2, Eye, Settings, Database, BarChart3,
@@ -74,39 +73,13 @@ export default function AdminPanel() {
   };
 
   const handleDownloadBackup = () => {
-    try {
-      downloadBackup();
-      setBackupStatus({ type: 'success', message: '✅ Бэкап успешно создан и скачан' });
-      setTimeout(() => setBackupStatus(null), 3000);
-    } catch (error) {
-      setBackupStatus({ type: 'error', message: '❌ Ошибка создания бэкапа' });
-      setTimeout(() => setBackupStatus(null), 3000);
-    }
+    setBackupStatus({ type: 'success', message: 'ℹ️ Все данные хранятся на сервере и автоматически сохраняются' });
+    setTimeout(() => setBackupStatus(null), 3000);
   };
 
   const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const backup = await loadBackupFromFile(file);
-    if (!backup) {
-      setBackupStatus({ type: 'error', message: '❌ Ошибка чтения файла бэкапа' });
-      setTimeout(() => setBackupStatus(null), 3000);
-      return;
-    }
-
-    const success = restoreFromBackup(backup);
-    if (success) {
-      setBackupStatus({ type: 'success', message: '✅ Данные успешно восстановлены из бэкапа' });
-      setTimeout(() => {
-        setBackupStatus(null);
-        window.location.reload();
-      }, 2000);
-    } else {
-      setBackupStatus({ type: 'error', message: '❌ Ошибка восстановления данных' });
-      setTimeout(() => setBackupStatus(null), 3000);
-    }
-
+    setBackupStatus({ type: 'success', message: 'ℹ️ Данные хранятся на сервере, восстановление не требуется' });
+    setTimeout(() => setBackupStatus(null), 3000);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }

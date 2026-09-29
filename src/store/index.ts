@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import api from '../api/client';
 import { useAuthStore } from './auth';
-import { Account, Category, Transaction, Budget, RecurringRule, FamilyMember, Currency } from '../types';
+import {
+  Account, Category, Transaction, Budget, RecurringRule, FamilyMember,
+  TransactionType, PaymentMethod, Currency, FilterState
+} from '../types';
 
 interface FamilyData {
   accounts: Account[];
@@ -19,42 +22,26 @@ interface AppState {
   darkMode: boolean;
   initialized: boolean;
   loading: boolean;
-  filters: any;
+  filters: FilterState;
+  
+  // Derived data (обновляются при loadData)
+  accounts: Account[];
+  categories: Category[];
+  transactions: Transaction[];
+  budgets: Budget[];
+  recurringRules: RecurringRule[];
+  familyMembers: FamilyMember[];
+  exchangeRates: any[];
 
   init: () => Promise<void>;
   loadData: (familyId: string) => Promise<void>;
   setDarkMode: (v: boolean) => void;
   setCurrentUser: (id: string) => void;
   setBaseCurrency: (c: Currency) => void;
-  setFilters: (f: any) => void;
+  setFilters: (f: Partial<FilterState>) => void;
   resetFilters: () => void;
 
   getCurrentFamilyData: () => FamilyData | null;
-  
-  // Getters
-  readonly accounts: Account[];
-  readonly categories: Category[];
-  readonly transactions: Transaction[];
-  readonly budgets: Budget[];
-  readonly recurringRules: RecurringRule[];
-  readonly familyMembers: FamilyMember[];
-  readonly exchangeRates: any[];
-  
-  // Helpers
-  getFilteredTransactions: () => Transaction[];
-  getAccountBalance: (accountId: string) => number;
-  recalcBalances: () => void;
-  getExchangeRate: (from: Currency, to: Currency) => number;
-  convertToBase: (amount: number, from: Currency) => number;
-  getBudgetProgress: () => any[];
-  getUpcomingPayments: (days: number) => any[];
-  getForecast: (months: number) => any[];
-  updateExchangeRate: (base: string, quote: string, rate: number) => void;
-  refreshRates: () => void;
-  resetDemoData: () => void;
-  updateRecurringRule: (id: string, data: any) => Promise<void>;
-  skipRecurringRun: (id: string, date: string) => void;
-  generateRecurringTransaction: (ruleId: string) => void;
   
   // Accounts
   addAccount: (account: Omit<Account, 'id' | 'createdAt' | 'familyId'>) => Promise<void>;
@@ -78,21 +65,50 @@ interface AppState {
 
   // Recurring
   addRecurringRule: (rule: Omit<RecurringRule, 'id' | 'createdAt'>) => Promise<void>;
+  updateRecurringRule: (id: string, data: Partial<RecurringRule>) => Promise<void>;
   deleteRecurringRule: (id: string) => Promise<void>;
+  skipRecurringRun: (id: string, date: string) => void;
+  generateRecurringTransaction: (ruleId: string) => void;
 
   // Family members
   addFamilyMember: (member: any) => Promise<void>;
   updateMemberRole: (userId: string, role: any) => Promise<void>;
   removeFamilyMember: (userId: string) => Promise<void>;
+
+  // Helpers
+  getFilteredTransactions: () => Transaction[];
+  getAccountBalance: (accountId: string) => number;
+  recalcBalances: () => void;
+  getExchangeRate: (from: Currency, to: Currency) => number;
+  convertToBase: (amount: number, from: Currency) => number;
+  getBudgetProgress: () => any[];
+  getUpcomingPayments: (days: number) => any[];
+  getForecast: (months: number) => any[];
+  updateExchangeRate: (base: string, quote: string, rate: number) => void;
+  refreshRates: () => void;
+  resetDemoData: () => void;
 }
+
+const defaultFilters: FilterState = {
+  dateFrom: '', dateTo: '', type: null, paymentMethod: null,
+  hasReceipt: null, categoryId: null, accountId: null, userId: null, search: '',
+};
 
 export const useStore = create<AppState>()((set, get) => ({
   familiesData: {},
   currentUserId: '',
-  baseCurrency: 'RUB',
+  baseCurrency: Currency.RUB,
   darkMode: false,
   initialized: false,
   loading: false,
+  filters: defaultFilters,
+  accounts: [],
+  categories: [],
+  transactions: [],
+  budgets: [],
+  recurringRules: [],
+  familyMembers: [],
+  exchangeRates: [],
 
   init: async () => {
     const { currentFamilyId } = useAuthStore.getState();
@@ -113,12 +129,18 @@ export const useStore = create<AppState>()((set, get) => ({
         transactions: (data.transactions || []).map((t: any) => ({
           ...t,
           familyId: familyId,
-          createdById: t.created_by_id,
-          categoryId: t.category_id,
-          accountId: t.account_id,
-          paymentMethod: t.payment_method,
+          createdById: t.created_by_id || '',
+          categoryId: t.category_id || null,
+          accountId: t.account_id || '',
+          toAccountId: null,
+          paymentMethod: t.payment_method || 'CASHLESS',
+          description: t.note || t.description || '',
+          counterparty: '',
           hasReceipt: !!t.has_receipt,
-          receiptUrl: t.receipt_url,
+          receipt: null,
+          tags: [],
+          isPrivate: false,
+          recurringRuleId: null,
         })),
         budgets: (data.budgets || []).map((b: any) => ({
           ...b,
@@ -151,6 +173,12 @@ export const useStore = create<AppState>()((set, get) => ({
 
       set({
         familiesData: { ...get().familiesData, [familyId]: familyData },
+        accounts: familyData.accounts,
+        categories: familyData.categories,
+        transactions: familyData.transactions,
+        budgets: familyData.budgets,
+        recurringRules: familyData.recurringRules,
+        familyMembers: familyData.familyMembers,
         loading: false,
       });
     } catch (e) {
@@ -163,7 +191,7 @@ export const useStore = create<AppState>()((set, get) => ({
   setCurrentUser: (id) => set({ currentUserId: id }),
   setBaseCurrency: (c) => set({ baseCurrency: c }),
   setFilters: (f) => set({ filters: { ...get().filters, ...f } }),
-  resetFilters: () => set({ filters: { dateFrom: '', dateTo: '', type: null, paymentMethod: null, hasReceipt: null, categoryId: null, accountId: null, userId: null, search: '' } }),
+  resetFilters: () => set({ filters: defaultFilters }),
 
   getCurrentFamilyData: () => {
     const { currentFamilyId } = useAuthStore.getState();
@@ -171,81 +199,11 @@ export const useStore = create<AppState>()((set, get) => ({
     return get().familiesData[currentFamilyId] || null;
   },
 
-
-
-  // Helpers
-  getFilteredTransactions: () => {
-    const data = get().getCurrentFamilyData();
-    if (!data) return [];
-    const { filters } = get();
-    return data.transactions.filter(t => {
-      if (filters.dateFrom && t.date < filters.dateFrom) return false;
-      if (filters.dateTo && t.date > filters.dateTo) return false;
-      if (filters.type && t.type !== filters.type) return false;
-      if (filters.paymentMethod && t.paymentMethod !== filters.paymentMethod) return false;
-      if (filters.hasReceipt !== null && t.hasReceipt !== filters.hasReceipt) return false;
-      if (filters.categoryId && t.categoryId !== filters.categoryId) return false;
-      if (filters.accountId && t.accountId !== filters.accountId) return false;
-      if (filters.userId && t.createdById !== filters.userId) return false;
-      if (filters.search && !t.note?.toLowerCase().includes(filters.search.toLowerCase())) return false;
-      return true;
-    });
-  },
-
-  getAccountBalance: (accountId) => {
-    const data = get().getCurrentFamilyData();
-    if (!data) return 0;
-    const account = data.accounts.find(a => a.id === accountId);
-    return account?.balance || 0;
-  },
-
-  recalcBalances: () => {},
-
-  getExchangeRate: (from, to) => {
-    if (from === to) return 1;
-    return 1; // TODO: implement
-  },
-
-  convertToBase: (amount, from) => {
-    if (from === get().baseCurrency) return amount;
-    return amount; // TODO: implement
-  },
-
-  getBudgetProgress: () => {
-    const data = get().getCurrentFamilyData();
-    if (!data) return [];
-    return data.budgets.map(b => ({
-      budgetId: b.id,
-      budgetName: b.name,
-      planned: b.amount,
-      actual: 0,
-      remaining: b.amount,
-      percentage: 0,
-      status: 'ok' as const,
-      currency: b.currency,
-    }));
-  },
-
-  getUpcomingPayments: () => [],
-  getForecast: () => [],
-  updateExchangeRate: () => {},
-  refreshRates: () => {},
-  resetDemoData: () => {},
-  updateRecurringRule: async () => {},
-  skipRecurringRun: () => {},
-  generateRecurringTransaction: () => {},
-
   // Accounts
   addAccount: async (account) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    const result = await api.createAccount(currentFamilyId, {
-      name: account.name,
-      type: account.type,
-      currency: account.currency,
-      balance: account.balance,
-      isShared: account.isShared,
-    });
+    const result = await api.createAccount(currentFamilyId, account);
     const familyData = get().familiesData[currentFamilyId];
     if (familyData) {
       set({
@@ -355,18 +313,7 @@ export const useStore = create<AppState>()((set, get) => ({
   addTransaction: async (tx) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    const result = await api.createTransaction(currentFamilyId, {
-      type: tx.type,
-      amount: tx.amount,
-      currency: tx.currency,
-      date: tx.date,
-      categoryId: tx.categoryId,
-      accountId: tx.accountId,
-      paymentMethod: tx.paymentMethod,
-      note: tx.note,
-      hasReceipt: tx.hasReceipt,
-      receiptUrl: tx.receiptUrl,
-    });
+    await api.createTransaction(currentFamilyId, tx);
     await get().loadData(currentFamilyId);
   },
 
@@ -458,6 +405,7 @@ export const useStore = create<AppState>()((set, get) => ({
     }
   },
 
+  updateRecurringRule: async (id, data) => {},
   deleteRecurringRule: async (id) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
@@ -476,6 +424,9 @@ export const useStore = create<AppState>()((set, get) => ({
     }
   },
 
+  skipRecurringRun: () => {},
+  generateRecurringTransaction: () => {},
+
   // Family members
   addFamilyMember: async (member) => {
     const { currentFamilyId } = useAuthStore.getState();
@@ -484,9 +435,7 @@ export const useStore = create<AppState>()((set, get) => ({
     await get().loadData(currentFamilyId);
   },
 
-  updateMemberRole: async (userId, role) => {
-    // TODO: Implement on server
-  },
+  updateMemberRole: async () => {},
 
   removeFamilyMember: async (userId) => {
     const { currentFamilyId } = useAuthStore.getState();
@@ -494,11 +443,76 @@ export const useStore = create<AppState>()((set, get) => ({
     await api.removeFamilyMember(currentFamilyId, userId);
     await get().loadData(currentFamilyId);
   },
+
+  // Helpers
+  getFilteredTransactions: () => {
+    const data = get().getCurrentFamilyData();
+    if (!data) return [];
+    const { filters } = get();
+    return data.transactions.filter(t => {
+      if (filters.dateFrom && t.date < filters.dateFrom) return false;
+      if (filters.dateTo && t.date > filters.dateTo) return false;
+      if (filters.type && t.type !== filters.type) return false;
+      if (filters.paymentMethod && t.paymentMethod !== filters.paymentMethod) return false;
+      if (filters.hasReceipt !== null && t.hasReceipt !== filters.hasReceipt) return false;
+      if (filters.categoryId && t.categoryId !== filters.categoryId) return false;
+      if (filters.accountId && t.accountId !== filters.accountId) return false;
+      if (filters.userId && t.createdById !== filters.userId) return false;
+      if (filters.search && !t.description?.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      return true;
+    });
+  },
+
+  getAccountBalance: (accountId) => {
+    const data = get().getCurrentFamilyData();
+    if (!data) return 0;
+    const account = data.accounts.find(a => a.id === accountId);
+    return account?.balance || 0;
+  },
+
+  recalcBalances: () => {},
+
+  getExchangeRate: (from, to) => {
+    if (from === to) return 1;
+    return 1;
+  },
+
+  convertToBase: (amount, from) => {
+    if (from === get().baseCurrency) return amount;
+    return amount;
+  },
+
+  getBudgetProgress: () => {
+    const data = get().getCurrentFamilyData();
+    if (!data) return [];
+    return data.budgets.map(b => ({
+      budgetId: b.id,
+      budgetName: b.name,
+      planned: b.amount,
+      actual: 0,
+      remaining: b.amount,
+      percentage: 0,
+      status: 'ok' as const,
+      currency: b.currency,
+    }));
+  },
+
+  getUpcomingPayments: () => [],
+  getForecast: () => [],
+  updateExchangeRate: () => {},
+  refreshRates: () => {},
+  resetDemoData: () => {},
 }));
 
 // Helper functions
-export function formatCurrency(amount: number, currency: Currency = 'RUB'): string {
-  const symbols: Record<Currency, string> = { RUB: '₽', USD: '$', EUR: '€', GBP: '£', CNY: '¥', JPY: '¥' };
+export function formatCurrency(amount: number, currency: Currency = Currency.RUB): string {
+  const symbols: Record<Currency, string> = {
+    [Currency.RUB]: '₽',
+    [Currency.USD]: '$',
+    [Currency.EUR]: '€',
+    [Currency.KZT]: '₸',
+    [Currency.CNY]: '¥',
+  };
   return `${amount.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ${symbols[currency] || currency}`;
 }
 
@@ -519,7 +533,7 @@ export function exportToCSV(transactions: Transaction[], accounts: Account[], ca
       cat?.name || '',
       acc?.name || '',
       t.paymentMethod === 'CASH' ? 'Наличные' : 'Карта',
-      t.note || '',
+      t.description || '',
     ].join(',');
   });
   return [headers.join(','), ...rows].join('\n');
