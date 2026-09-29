@@ -16,7 +16,7 @@ export default function Register({ onBack, onSuccess }: RegisterProps) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -37,15 +37,18 @@ export default function Register({ onBack, onSuccess }: RegisterProps) {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const success = register(name, email, password, familyName);
+    try {
+      const success = await register(name, email, password, familyName);
       if (success) {
         onSuccess();
       } else {
         setError('Пользователь с таким email уже существует');
         setIsLoading(false);
       }
-    }, 500);
+    } catch {
+      setError('Ошибка соединения с сервером');
+      setIsLoading(false);
+    }
   };
 
   return (
