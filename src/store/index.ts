@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import api from '../api/client';
 import { useAuthStore } from './auth';
 import {
-  Account, Category, Transaction, Budget, RecurringRule, FamilyMember,
+  Account, Category, Transaction, Budget, RecurringRule, FamilyMember, Receipt,
   TransactionType, PaymentMethod, Currency, FilterState
 } from '../types';
 
@@ -13,6 +13,7 @@ interface FamilyData {
   budgets: Budget[];
   recurringRules: RecurringRule[];
   familyMembers: FamilyMember[];
+  receipts: Receipt[];
 }
 
 interface AppState {
@@ -74,6 +75,11 @@ interface AppState {
   addFamilyMember: (member: any) => Promise<void>;
   updateMemberRole: (userId: string, role: any) => Promise<void>;
   removeFamilyMember: (userId: string) => Promise<void>;
+
+  // Receipts
+  addReceipt: (receipt: Omit<Receipt, 'id'>) => Promise<void>;
+  updateReceipt: (id: string, data: Partial<Receipt>) => Promise<void>;
+  deleteReceipt: (id: string) => Promise<void>;
 
   // Helpers
   getFilteredTransactions: () => Transaction[];
@@ -169,7 +175,37 @@ export const useStore = create<AppState>()((set, get) => ({
           color: m.color,
           joinedAt: m.joined_at,
         })),
+        receipts: [],
       };
+
+      // Загрузить чеки отдельно
+      try {
+        const receipts = await api.getReceipts(familyId);
+        familyData.receipts = receipts.map((r: any) => ({
+          id: r.id,
+          transactionId: r.transaction_id,
+          receiptNumber: r.receipt_number || '',
+          storeName: r.store_name || '',
+          receiptDate: r.receipt_date || '',
+          totalAmount: r.total_amount || 0,
+          filePath: r.file_path || null,
+          items: (r.items || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.total,
+          })),
+        }));
+        
+        // Привязать чеки к транзакциям
+        familyData.transactions = familyData.transactions.map(t => {
+          const receipt = familyData.receipts.find(r => r.transactionId === t.id);
+          return receipt ? { ...t, receipt } : t;
+        });
+      } catch (e) {
+        console.error('Load receipts error:', e);
+      }
 
       set({
         familiesData: { ...get().familiesData, [familyId]: familyData },
@@ -313,20 +349,89 @@ export const useStore = create<AppState>()((set, get) => ({
   addTransaction: async (tx) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    await api.createTransaction(currentFamilyId, tx);
+    
+    // Извлечь receipt из данных транзакции
+    const { receipt, ...txData } = tx as any;
+    
+    // Создать транзакцию
+    const result = await api.createTransaction(currentFamilyId, txData);
+    
+    // Если есть чек, создать его отдельно
+    if (receipt && tx.hasReceipt) {
+      await api.createReceipt(currentFamilyId, {
+        transactionId: result.id,
+        receiptNumber: receipt.receiptNumber,
+        storeName: receipt.storeName,
+        receiptDate: receipt.receiptDate,
+        totalAmount: receipt.totalAmount,
+        filePath: receipt.filePath,
+        items: receipt.items,
+      });
+    }
+    
     await get().loadData(currentFamilyId);
   },
 
   updateTransaction: async (id, data) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    await api.updateTransaction(currentFamilyId, id, data);
+    
+    // Извлечь receipt из данных транзакции
+    const { receipt, ...txData } = data as any;
+    
+    // Обновить транзакцию
+    await api.updateTransaction(currentFamilyId, id, txData);
+    
+    // Если есть чек, обновить или создать его
+    if (receipt && data.hasReceipt) {
+      const familyData = get().familiesData[currentFamilyId];
+      const existingReceipt = familyData?.receipts.find(r => r.transactionId === id);
+      
+      if (existingReceipt) {
+        // Обновить существующий чек
+        await api.updateReceipt(currentFamilyId, existingReceipt.id, {
+          receiptNumber: receipt.receiptNumber,
+          storeName: receipt.storeName,
+          receiptDate: receipt.receiptDate,
+          totalAmount: receipt.totalAmount,
+          filePath: receipt.filePath,
+          items: receipt.items,
+        });
+      } else {
+        // Создать новый чек
+        await api.createReceipt(currentFamilyId, {
+          transactionId: id,
+          receiptNumber: receipt.receiptNumber,
+          storeName: receipt.storeName,
+          receiptDate: receipt.receiptDate,
+          totalAmount: receipt.totalAmount,
+          filePath: receipt.filePath,
+          items: receipt.items,
+        });
+      }
+    } else if (!data.hasReceipt) {
+      // Если чек был удалён, удалить его из базы
+      const familyData = get().familiesData[currentFamilyId];
+      const existingReceipt = familyData?.receipts.find(r => r.transactionId === id);
+      if (existingReceipt) {
+        await api.deleteReceipt(currentFamilyId, existingReceipt.id);
+      }
+    }
+    
     await get().loadData(currentFamilyId);
   },
 
   deleteTransaction: async (id) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
+    
+    // Удалить связанный чек если есть
+    const familyData = get().familiesData[currentFamilyId];
+    const receipt = familyData?.receipts.find(r => r.transactionId === id);
+    if (receipt) {
+      await api.deleteReceipt(currentFamilyId, receipt.id);
+    }
+    
     await api.deleteTransaction(currentFamilyId, id);
     await get().loadData(currentFamilyId);
   },
@@ -442,6 +547,69 @@ export const useStore = create<AppState>()((set, get) => ({
     if (!currentFamilyId) return;
     await api.removeFamilyMember(currentFamilyId, userId);
     await get().loadData(currentFamilyId);
+  },
+
+  // Receipts
+  addReceipt: async (receipt: Omit<Receipt, 'id'>) => {
+    const { currentFamilyId } = useAuthStore.getState();
+    if (!currentFamilyId) return;
+    const result = await api.createReceipt(currentFamilyId, {
+      transactionId: receipt.transactionId,
+      receiptNumber: receipt.receiptNumber,
+      storeName: receipt.storeName,
+      receiptDate: receipt.receiptDate,
+      totalAmount: receipt.totalAmount,
+      filePath: receipt.filePath,
+      items: receipt.items,
+    });
+    const familyData = get().familiesData[currentFamilyId];
+    if (familyData) {
+      set({
+        familiesData: {
+          ...get().familiesData,
+          [currentFamilyId]: {
+            ...familyData,
+            receipts: [...familyData.receipts, result],
+          },
+        },
+      });
+    }
+  },
+
+  updateReceipt: async (id: string, data: Partial<Receipt>) => {
+    const { currentFamilyId } = useAuthStore.getState();
+    if (!currentFamilyId) return;
+    const result = await api.updateReceipt(currentFamilyId, id, data);
+    const familyData = get().familiesData[currentFamilyId];
+    if (familyData) {
+      set({
+        familiesData: {
+          ...get().familiesData,
+          [currentFamilyId]: {
+            ...familyData,
+            receipts: familyData.receipts.map(r => r.id === id ? result : r),
+          },
+        },
+      });
+    }
+  },
+
+  deleteReceipt: async (id: string) => {
+    const { currentFamilyId } = useAuthStore.getState();
+    if (!currentFamilyId) return;
+    await api.deleteReceipt(currentFamilyId, id);
+    const familyData = get().familiesData[currentFamilyId];
+    if (familyData) {
+      set({
+        familiesData: {
+          ...get().familiesData,
+          [currentFamilyId]: {
+            ...familyData,
+            receipts: familyData.receipts.filter(r => r.id !== id),
+          },
+        },
+      });
+    }
   },
 
   // Helpers

@@ -148,6 +148,30 @@ db.exec(`
     joined_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS receipts (
+    id TEXT PRIMARY KEY,
+    transaction_id TEXT NOT NULL,
+    family_id TEXT NOT NULL,
+    receipt_number TEXT,
+    store_name TEXT,
+    receipt_date TEXT,
+    total_amount REAL,
+    file_path TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
+    FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS receipt_items (
+    id TEXT PRIMARY KEY,
+    receipt_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    price REAL NOT NULL,
+    total REAL NOT NULL,
+    FOREIGN KEY (receipt_id) REFERENCES receipts(id) ON DELETE CASCADE
+  );
 `);
 
 // Создание супер-админа если его нет
@@ -656,6 +680,113 @@ app.get('/api/families/:familyId/data', authMiddleware, familyAccess, (req, res)
   const recurring = db.prepare('SELECT * FROM recurring_rules WHERE family_id = ?').all(req.familyId);
   
   res.json({ family: { ...family, members }, accounts, categories, transactions, budgets, recurring });
+});
+
+// ==========================================
+// RECEIPTS ROUTES
+// ==========================================
+app.get('/api/families/:familyId/receipts', authMiddleware, familyAccess, (req, res) => {
+  const receipts = db.prepare('SELECT * FROM receipts WHERE family_id = ? ORDER BY created_at DESC').all(req.familyId);
+  
+  // Загрузить items для каждого чека
+  const receiptsWithItems = receipts.map(receipt => {
+    const items = db.prepare('SELECT * FROM receipt_items WHERE receipt_id = ?').all(receipt.id);
+    return { ...receipt, items };
+  });
+  
+  res.json(receiptsWithItems);
+});
+
+app.get('/api/families/:familyId/receipts/:id', authMiddleware, familyAccess, (req, res) => {
+  const receipt = db.prepare('SELECT * FROM receipts WHERE id = ? AND family_id = ?').get(req.params.id, req.familyId);
+  if (!receipt) return res.status(404).json({ error: 'Чек не найден' });
+  
+  const items = db.prepare('SELECT * FROM receipt_items WHERE receipt_id = ?').all(receipt.id);
+  res.json({ ...receipt, items });
+});
+
+app.post('/api/families/:familyId/receipts', authMiddleware, familyAccess, (req, res) => {
+  const { transactionId, receiptNumber, storeName, receiptDate, totalAmount, filePath, items } = req.body;
+  
+  if (!transactionId) {
+    return res.status(400).json({ error: 'transactionId обязателен' });
+  }
+  
+  const id = uuidv4();
+  
+  const insertReceipt = db.transaction(() => {
+    db.prepare(`INSERT INTO receipts (id, transaction_id, family_id, receipt_number, store_name, receipt_date, total_amount, file_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, transactionId, req.familyId, receiptNumber || null, storeName || null, receiptDate || null, totalAmount || 0, filePath || null);
+    
+    // Добавить items если есть
+    if (items && Array.isArray(items)) {
+      items.forEach(item => {
+        const itemId = uuidv4();
+        db.prepare(`INSERT INTO receipt_items (id, receipt_id, name, quantity, price, total) VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(itemId, id, item.name, item.quantity, item.price, item.total);
+      });
+    }
+    
+    // Обновить transaction.has_receipt
+    db.prepare('UPDATE transactions SET has_receipt = 1 WHERE id = ? AND family_id = ?')
+      .run(transactionId, req.familyId);
+  });
+  
+  insertReceipt();
+  
+  const receipt = db.prepare('SELECT * FROM receipts WHERE id = ?').get(id);
+  const itemsList = db.prepare('SELECT * FROM receipt_items WHERE receipt_id = ?').all(id);
+  
+  res.json({ ...receipt, items: itemsList });
+});
+
+app.put('/api/families/:familyId/receipts/:id', authMiddleware, familyAccess, (req, res) => {
+  const { receiptNumber, storeName, receiptDate, totalAmount, filePath, items } = req.body;
+  
+  const updateReceipt = db.transaction(() => {
+    db.prepare(`UPDATE receipts SET receipt_number=?, store_name=?, receipt_date=?, total_amount=?, file_path=? WHERE id=? AND family_id=?`)
+      .run(receiptNumber || null, storeName || null, receiptDate || null, totalAmount || 0, filePath || null, req.params.id, req.familyId);
+    
+    // Удалить старые items и добавить новые
+    if (items && Array.isArray(items)) {
+      db.prepare('DELETE FROM receipt_items WHERE receipt_id = ?').run(req.params.id);
+      
+      items.forEach(item => {
+        const itemId = uuidv4();
+        db.prepare(`INSERT INTO receipt_items (id, receipt_id, name, quantity, price, total) VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(itemId, req.params.id, item.name, item.quantity, item.price, item.total);
+      });
+    }
+  });
+  
+  updateReceipt();
+  
+  const receipt = db.prepare('SELECT * FROM receipts WHERE id = ?').get(req.params.id);
+  const itemsList = db.prepare('SELECT * FROM receipt_items WHERE receipt_id = ?').all(req.params.id);
+  
+  res.json({ ...receipt, items: itemsList });
+});
+
+app.delete('/api/families/:familyId/receipts/:id', authMiddleware, familyAccess, (req, res) => {
+  const receipt = db.prepare('SELECT * FROM receipts WHERE id = ? AND family_id = ?').get(req.params.id, req.familyId);
+  
+  const deleteReceipt = db.transaction(() => {
+    // Удалить items
+    db.prepare('DELETE FROM receipt_items WHERE receipt_id = ?').run(req.params.id);
+    
+    // Удалить receipt
+    db.prepare('DELETE FROM receipts WHERE id = ? AND family_id = ?').run(req.params.id, req.familyId);
+    
+    // Обновить transaction.has_receipt
+    if (receipt) {
+      db.prepare('UPDATE transactions SET has_receipt = 0 WHERE id = ? AND family_id = ?')
+        .run(receipt.transaction_id, req.familyId);
+    }
+  });
+  
+  deleteReceipt();
+  
+  res.json({ success: true });
 });
 
 // ==========================================
