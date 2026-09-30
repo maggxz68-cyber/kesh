@@ -228,6 +228,35 @@ class ApiClient {
     });
   }
 
+  // ============ RECEIPTS ============
+  async getReceipts(familyId: string) {
+    return this.request<any[]>(`/families/${familyId}/receipts`);
+  }
+
+  async getReceipt(familyId: string, id: string) {
+    return this.request<any>(`/families/${familyId}/receipts/${id}`);
+  }
+
+  async createReceipt(familyId: string, data: any) {
+    return this.request<any>(`/families/${familyId}/receipts`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateReceipt(familyId: string, id: string, data: any) {
+    return this.request<any>(`/families/${familyId}/receipts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteReceipt(familyId: string, id: string) {
+    return this.request<any>(`/families/${familyId}/receipts/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // ============ ADMIN ============
   async adminGetUsers() {
     return this.request<any[]>('/admin/users');
