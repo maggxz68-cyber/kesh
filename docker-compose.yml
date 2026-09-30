@@ -1,16 +1,33 @@
-
 services:
-  kesh-app:
+  frontend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: kesh_container
+    container_name: kesh_frontend
     restart: always
     ports:
-      - "80:80" # Если 80 порт занят, можно изменить на "8080:80"
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - kesh_network
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: kesh_backend
+    restart: always
+    expose:
+      - "3001"
+    volumes:
+      - db_data:/app/data
     networks:
       - kesh_network
 
 networks:
   kesh_network:
     driver: bridge
+
+volumes:
+  db_data:
