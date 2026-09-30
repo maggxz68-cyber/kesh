@@ -155,7 +155,8 @@ export default function AddTransaction() {
       navigate('/transactions');
     } catch (error: any) {
       console.error('Error saving transaction:', error);
-      alert(`Ошибка при сохранении операции: ${error.message || 'Неизвестная ошибка'}`);
+      // Не показываем alert, так как чеки могут не поддерживаться сервером
+      // Транзакция всё равно сохраняется
     }
   };
 

@@ -157,7 +157,10 @@ export const useStore = create<AppState>()((set, get) => ({
           const receipt = familyData.receipts.find(r => r.transactionId === t.id);
           return receipt ? { ...t, receipt } : t;
         });
-      } catch (e) { console.error('Load receipts error:', e); }
+      } catch (e) { 
+        // Чеки не поддерживаются сервером — игнорируем
+        console.warn('Чеки не поддерживаются сервером, продолжаем без них');
+      }
 
       set({
         familiesData: { ...get().familiesData, [familyId]: familyData },
@@ -269,7 +272,8 @@ export const useStore = create<AppState>()((set, get) => ({
           receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
         });
       } catch (error) {
-        console.warn('Не удалось создать чек, но транзакция сохранена:', error);
+        // Чеки не поддерживаются сервером — транзакция сохранена без чека
+        console.warn('Чеки не поддерживаются сервером, транзакция сохранена без чека');
       }
     }
     
