@@ -68,21 +68,15 @@ function AuthPage() {
 
 function Layout() {
   const { darkMode, setDarkMode, init, initialized, familyMembers, currentUserId } = useStore();
-  const { currentUser, currentFamilyId, families, setCurrentFamily, logout, isDemoMode, restoreSession, isAuthenticated } = useAuthStore();
+  const { currentUser, currentFamilyId, families, setCurrentFamily, logout, isDemoMode } = useAuthStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showFamilySelector, setShowFamilySelector] = useState(false);
-  const [sessionRestored, setSessionRestored] = useState(false);
 
+  // Инициализация данных при загрузке Layout (restoreSession теперь вызывается выше по дереву)
   useEffect(() => {
-    if (!sessionRestored) {
-      restoreSession().then(() => {
-        setSessionRestored(true);
-        init();
-      });
-    }
-  }, [sessionRestored, restoreSession, init]);
+    init();
+  }, [init]);
 
-  // Синхронизация currentUserId с currentUser при входе
   useEffect(() => {
     if (currentUser) {
       const { setCurrentUser } = useStore.getState();
@@ -95,7 +89,7 @@ function Layout() {
     else document.documentElement.classList.remove('dark');
   }, [darkMode]);
 
-  if (!sessionRestored || !initialized) return null;
+  if (!initialized) return null;
 
   const currentMember = familyMembers.find(m => m.userId === currentUserId);
   const isAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
@@ -110,7 +104,6 @@ function Layout() {
     window.location.reload();
   };
 
-  // Для супер-админа показываем только админ-панель и настройки
   const visibleNavItems = isAdmin
     ? filteredNavItems.filter(item => item.to === '/admin' || item.to === '/settings')
     : filteredNavItems;
@@ -118,7 +111,6 @@ function Layout() {
   return (
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors">
-        {/* Top bar */}
         <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex items-center justify-between px-4 h-14">
             <div className="flex items-center gap-3">
@@ -186,7 +178,6 @@ function Layout() {
         </header>
 
         <div className="flex">
-          {/* Sidebar */}
           <aside className="hidden lg:flex flex-col w-56 min-h-[calc(100vh-3.5rem)] bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-3 gap-1 sticky top-14 overflow-y-auto">
             {visibleNavItems.map(item => (
               <NavLink
@@ -206,7 +197,6 @@ function Layout() {
             ))}
           </aside>
 
-          {/* Mobile menu */}
           {mobileMenuOpen && (
             <div className="lg:hidden fixed inset-0 z-40 top-14">
               <div className="absolute inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
@@ -253,7 +243,6 @@ function Layout() {
           </main>
         </div>
 
-        {/* Bottom nav */}
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-50">
           <div className="flex justify-around py-2">
             {visibleNavItems.slice(0, 5).map(item => (
@@ -278,9 +267,31 @@ function Layout() {
   );
 }
 
-function MainRouter() {
-  const { isAuthenticated, currentFamilyId, currentUser } = useAuthStore();
+// 🌟 ГЛАВНОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ:
+function AppRouter() {
+  const { isAuthenticated, currentFamilyId, currentUser, restoreSession } = useAuthStore();
+  const [isChecking, setIsChecking] = useState(true);
 
+  // Проверяем токен из localStorage ПЕРЕД тем, как решать, что показывать
+  useEffect(() => {
+    restoreSession().finally(() => {
+      setIsChecking(false);
+    });
+  }, []);
+
+  // Показываем экран загрузки, пока проверяем сессию
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Проверка сессии...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Теперь isAuthenticated гарантированно актуален
   if (!isAuthenticated) {
     return (
       <Routes>
@@ -289,7 +300,6 @@ function MainRouter() {
     );
   }
 
-  // Супер-админ всегда идёт в админ-панель
   if (currentUser?.role === UserRole.SUPER_ADMIN) {
     return (
       <Routes>
@@ -314,7 +324,7 @@ function MainRouter() {
 export default function App() {
   return (
     <HashRouter>
-      <MainRouter />
+      <AppRouter />
     </HashRouter>
   );
 }

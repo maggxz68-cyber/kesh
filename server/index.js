@@ -26,7 +26,9 @@ app.use(express.static(path.join(__dirname, '..', 'dist')));
 // ==========================================
 // DATABASE SETUP
 // ==========================================
-const db = new Database(path.join(__dirname, 'budget.db'));
+const dbDir = path.join(__dirname, 'data');
+if (!require('fs').existsSync(dbDir)) require('fs').mkdirSync(dbDir, { recursive: true });
+const db = new Database(path.join(dbDir, 'budget.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
