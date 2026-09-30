@@ -245,7 +245,21 @@ export const useStore = create<AppState>()((set, get) => ({
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     const { receipt, ...txData } = tx as any;
-    const result = await api.createTransaction(currentFamilyId, txData);
+    
+    // Маппинг полей для сервера
+    const serverData = {
+      ...txData,
+      note: txData.description || '', // Клиент отправляет 'description', сервер ожидает 'note'
+    };
+    delete serverData.description;
+    delete serverData.counterparty;
+    delete serverData.tags;
+    delete serverData.isPrivate;
+    delete serverData.createdById;
+    delete serverData.recurringRuleId;
+    delete serverData.toAccountId;
+    
+    const result = await api.createTransaction(currentFamilyId, serverData);
     if (receipt && tx.hasReceipt) {
       await api.createReceipt(currentFamilyId, {
         transactionId: result.id, receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
@@ -259,7 +273,21 @@ export const useStore = create<AppState>()((set, get) => ({
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     const { receipt, ...txData } = changes as any;
-    await api.updateTransaction(currentFamilyId, id, txData);
+    
+    // Маппинг полей для сервера
+    const serverData = {
+      ...txData,
+      note: txData.description || '', // Клиент отправляет 'description', сервер ожидает 'note'
+    };
+    delete serverData.description;
+    delete serverData.counterparty;
+    delete serverData.tags;
+    delete serverData.isPrivate;
+    delete serverData.createdById;
+    delete serverData.recurringRuleId;
+    delete serverData.toAccountId;
+    
+    await api.updateTransaction(currentFamilyId, id, serverData);
     if (receipt && changes.hasReceipt) {
       const fd = get().familiesData[currentFamilyId];
       const existing = fd?.receipts.find(r => r.transactionId === id);
