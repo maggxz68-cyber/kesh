@@ -111,6 +111,7 @@ export default function AddTransaction() {
   });
 
   const onSubmit = async (data: FormData) => {
+    // Маппинг полей для сервера
     const txData = {
       type: data.type,
       amount: data.amount,
@@ -143,7 +144,7 @@ export default function AddTransaction() {
       isPrivate: false,
       createdById: currentUser?.id || '',
       recurringRuleId: null,
-    };
+    } as any;
 
     try {
       if (isEdit && existingTx) {
@@ -152,9 +153,9 @@ export default function AddTransaction() {
         await addTransaction(txData);
       }
       navigate('/transactions');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving transaction:', error);
-      alert('Ошибка при сохранении операции');
+      alert(`Ошибка при сохранении операции: ${error.message || 'Неизвестная ошибка'}`);
     }
   };
 

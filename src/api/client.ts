@@ -26,10 +26,14 @@ class ApiClient {
     };
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
+    console.log(`API Request: ${options.method || 'GET'} ${endpoint}`, options.body ? JSON.parse(options.body as string) : '');
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers,
     });
+
+    console.log(`API Response: ${response.status} ${response.statusText}`);
 
     if (response.status === 401) {
       this.clearToken();
@@ -40,7 +44,8 @@ class ApiClient {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Ошибка сервера');
+      console.error('API Error:', data);
+      throw new Error(data.error || `Ошибка сервера: ${response.status}`);
     }
 
     return data as T;
