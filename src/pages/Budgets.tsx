@@ -17,18 +17,23 @@ export default function Budgets() {
 
   const expenseCategories = categories.filter(c => c.type === TransactionType.EXPENSE);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.name.trim()) return;
     const now = new Date();
     const startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    if (editingId) {
-      updateBudget(editingId, { ...form, categoryId: form.categoryId || null });
-      setEditingId(null);
-    } else {
-      addBudget({ ...form, categoryId: form.categoryId || null, startDate, userId: null, isActive: true });
+    try {
+      if (editingId) {
+        await updateBudget(editingId, { ...form, categoryId: form.categoryId || null });
+        setEditingId(null);
+      } else {
+        await addBudget({ ...form, categoryId: form.categoryId || null, startDate, userId: null, isActive: true });
+      }
+      setForm({ name: '', categoryId: null, amount: 0, currency: Currency.RUB, period: BudgetPeriod.MONTH, type: BudgetType.HARD, scope: BudgetScope.FAMILY, alertAt80: true, alertAt100: true });
+      setShowForm(false);
+    } catch (error) {
+      console.error('Error saving budget:', error);
+      alert('Ошибка при сохранении бюджета');
     }
-    setForm({ name: '', categoryId: null, amount: 0, currency: Currency.RUB, period: BudgetPeriod.MONTH, type: BudgetType.HARD, scope: BudgetScope.FAMILY, alertAt80: true, alertAt100: true });
-    setShowForm(false);
   };
 
   const startEdit = (id: string) => {
@@ -199,7 +204,7 @@ export default function Budgets() {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold">{p.percentage.toFixed(0)}%</span>
                 <button onClick={() => startEdit(p.budgetId)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"><Edit3 size={14} /></button>
-                <button onClick={() => { if (confirm('Удалить бюджет?')) deleteBudget(p.budgetId); }} className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"><Trash2 size={14} /></button>
+                <button onClick={async () => { if (confirm('Удалить бюджет?')) { try { await deleteBudget(p.budgetId); } catch (error) { console.error('Error deleting budget:', error); alert('Ошибка при удалении бюджета'); } } }} className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"><Trash2 size={14} /></button>
               </div>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">

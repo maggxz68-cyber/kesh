@@ -110,7 +110,7 @@ export default function AddTransaction() {
     return false;
   });
 
-  const onSubmit = (data: FormData) => {
+  const onSubmit = async (data: FormData) => {
     const txData = {
       type: data.type,
       amount: data.amount,
@@ -145,12 +145,17 @@ export default function AddTransaction() {
       recurringRuleId: null,
     };
 
-    if (isEdit && existingTx) {
-      updateTransaction(existingTx.id, txData);
-    } else {
-      addTransaction(txData);
+    try {
+      if (isEdit && existingTx) {
+        await updateTransaction(existingTx.id, txData);
+      } else {
+        await addTransaction(txData);
+      }
+      navigate('/transactions');
+    } catch (error) {
+      console.error('Error saving transaction:', error);
+      alert('Ошибка при сохранении операции');
     }
-    navigate('/transactions');
   };
 
   const addItem = () => {

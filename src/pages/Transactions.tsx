@@ -19,17 +19,29 @@ export default function Transactions() {
   const totalPages = Math.ceil(filtered.length / limit);
   const paginated = filtered.slice((page - 1) * limit, page * limit);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить операцию?')) {
-      deleteTransaction(id);
+      try {
+        await deleteTransaction(id);
+      } catch (error) {
+        console.error('Error deleting transaction:', error);
+        alert('Ошибка при удалении операции');
+      }
     }
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
     if (confirm(`Удалить ${selectedIds.size} операций?`)) {
-      selectedIds.forEach(id => deleteTransaction(id));
-      setSelectedIds(new Set());
+      try {
+        for (const id of selectedIds) {
+          await deleteTransaction(id);
+        }
+        setSelectedIds(new Set());
+      } catch (error) {
+        console.error('Error deleting transactions:', error);
+        alert('Ошибка при удалении операций');
+      }
     }
   };
 

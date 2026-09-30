@@ -21,7 +21,7 @@ export default function Recurring() {
   const upcoming = useMemo(() => getUpcomingPayments(30), [recurringRules]);
   const forecast = useMemo(() => getForecast(6), [accounts, transactions]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.name.trim() || !form.accountId) return;
     const nextRun = new Date(form.startDate);
     if (form.freq === RecurFreq.MONTHLY && form.byMonthDay) {
@@ -34,14 +34,19 @@ export default function Recurring() {
       userId: '',
       skippedDates: [],
     };
-    if (editingId) {
-      updateRecurringRule(editingId, ruleData);
-      setEditingId(null);
-    } else {
-      addRecurringRule(ruleData);
+    try {
+      if (editingId) {
+        await updateRecurringRule(editingId, ruleData);
+        setEditingId(null);
+      } else {
+        await addRecurringRule(ruleData);
+      }
+      setForm({ name: '', type: TransactionType.EXPENSE, amount: 0, currency: Currency.RUB, accountId: '', toAccountId: null, categoryId: null, paymentMethod: PaymentMethod.CASHLESS, counterparty: '', description: '', expectsReceipt: false, freq: RecurFreq.MONTHLY, interval: 1, byMonthDay: null, startDate: new Date().toISOString().split('T')[0], endDate: null, count: null, mode: RecurMode.AUTO, notifyDaysBefore: 1 });
+      setShowForm(false);
+    } catch (error) {
+      console.error('Error saving recurring rule:', error);
+      alert('Ошибка при сохранении правила');
     }
-    setForm({ name: '', type: TransactionType.EXPENSE, amount: 0, currency: Currency.RUB, accountId: '', toAccountId: null, categoryId: null, paymentMethod: PaymentMethod.CASHLESS, counterparty: '', description: '', expectsReceipt: false, freq: RecurFreq.MONTHLY, interval: 1, byMonthDay: null, startDate: new Date().toISOString().split('T')[0], endDate: null, count: null, mode: RecurMode.AUTO, notifyDaysBefore: 1 });
-    setShowForm(false);
   };
 
   const startEdit = (id: string) => {
@@ -242,7 +247,7 @@ export default function Recurring() {
                   <button onClick={() => startEdit(rule.id)} className="px-2 py-1 text-xs rounded hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-1">
                     <Edit3 size={12} /> Изменить
                   </button>
-                  <button onClick={() => { if (confirm('Удалить правило?')) deleteRecurringRule(rule.id); }}
+                  <button onClick={async () => { if (confirm('Удалить правило?')) { try { await deleteRecurringRule(rule.id); } catch (error) { console.error('Error deleting recurring rule:', error); alert('Ошибка при удалении правила'); } } }}
                     className="px-2 py-1 text-xs text-red-500 rounded hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-1">
                     <Trash2 size={12} /> Удалить
                   </button>
