@@ -36,23 +36,23 @@ export interface AuthState {
   isAuthenticated: boolean;
   _loading?: boolean;
   
-  login: (login: string, password: string) => boolean;
-  loginDemo: () => void;
+  login: (login: string, password: string) => Promise<boolean>;
+  loginDemo: () => Promise<void>;
   logout: () => void;
-  register: (name: string, email: string, password: string, familyName: string) => boolean;
+  register: (name: string, email: string, password: string, familyName: string) => Promise<boolean>;
   setCurrentFamily: (familyId: string) => void;
-  restoreSession: () => boolean;
+  restoreSession: () => Promise<boolean>;
   
   addUser: (user: Omit<User, 'id' | 'createdAt' | 'familyIds'>) => string;
-  deleteUser: (userId: string) => void;
+  deleteUser: (userId: string) => Promise<void>;
   addFamily: (name: string, ownerId: string) => string;
-  deleteFamily: (familyId: string) => void;
-  addMemberToFamily: (familyId: string, userId: string, role?: UserRole) => void;
-  removeMemberFromFamily: (familyId: string, userId: string) => void;
-  updateMemberRole: (familyId: string, userId: string, role: UserRole) => void;
+  deleteFamily: (familyId: string) => Promise<void>;
+  addMemberToFamily: (familyId: string, userId: string, role?: UserRole) => Promise<void>;
+  removeMemberFromFamily: (familyId: string, userId: string) => Promise<void>;
+  updateMemberRole: (familyId: string, userId: string, role: UserRole) => Promise<void>;
   getUserRoleInFamily: (familyId: string, userId: string) => UserRole | null;
   
-  addFamilyMemberWithAccount: (familyId: string, name: string, email: string, password: string, role?: UserRole) => string | null;
-  joinFamilyByCode: (code: string, name: string, email: string, password: string) => boolean;
-  generateInviteCode: (familyId: string) => string;
+  addFamilyMemberWithAccount: (familyId: string, name: string, email: string, password: string, role?: UserRole) => Promise<string | null>;
+  joinFamilyByCode: (code: string, name: string, email: string, password: string) => Promise<boolean>;
+  generateInviteCode: (familyId: string) => Promise<string>;
 }

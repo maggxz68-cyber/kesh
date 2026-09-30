@@ -22,12 +22,12 @@ export default function Login({ onRegister }: LoginProps) {
   const [joinPassword, setJoinPassword] = useState('');
   const [joinShowPassword, setJoinShowPassword] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    const success = login(loginValue, password);
+    const success = await login(loginValue, password);
     if (success) {
       window.location.href = '/';
     } else {
@@ -36,12 +36,12 @@ export default function Login({ onRegister }: LoginProps) {
     }
   };
 
-  const handleDemo = () => {
-    loginDemo();
+  const handleDemo = async () => {
+    await loginDemo();
     window.location.href = '/';
   };
 
-  const handleJoinFamily = (e: React.FormEvent) => {
+  const handleJoinFamily = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -56,7 +56,7 @@ export default function Login({ onRegister }: LoginProps) {
     }
 
     setIsLoading(true);
-    const success = joinFamilyByCode(joinCode, joinName, joinEmail, joinPassword);
+    const success = await joinFamilyByCode(joinCode, joinName, joinEmail, joinPassword);
     if (success) {
       window.location.href = '/';
     } else {

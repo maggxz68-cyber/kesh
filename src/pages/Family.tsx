@@ -17,11 +17,19 @@ export default function Family() {
   
   // Получаем данные семьи через shallow-селекторы (без бесконечного цикла)
   const familyMembers = useStore(
-    useShallow((state: any) => state.familyMembers || [])
+    useShallow(state => {
+      const { currentFamilyId } = useAuthStore.getState();
+      if (!currentFamilyId) return [];
+      return state.familiesData[currentFamilyId]?.familyMembers || [];
+    })
   );
   
   const transactions = useStore(
-    useShallow((state: any) => state.transactions || [])
+    useShallow(state => {
+      const { currentFamilyId } = useAuthStore.getState();
+      if (!currentFamilyId) return [];
+      return state.familiesData[currentFamilyId]?.transactions || [];
+    })
   );
   
   // Проверяем, является ли текущий пользователь владельцем семьи
@@ -48,7 +56,7 @@ export default function Family() {
   
   useEffect(() => {
     if (currentFamilyId) {
-      setInviteLink(generateInviteCode(currentFamilyId));
+      generateInviteCode(currentFamilyId).then(code => setInviteLink(code));
     }
   }, [currentFamilyId, generateInviteCode]);
 

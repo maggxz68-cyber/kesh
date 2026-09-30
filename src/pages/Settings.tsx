@@ -249,7 +249,7 @@ export default function SettingsPage() {
               {Object.entries(exchangeRates).map(([pair, rate]) => (
                 <div key={pair} className="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/50 text-sm">
                   <span className="font-medium">{pair.replace('_', '/')}</span>
-                  <span>{rate.toFixed(4)}</span>
+                  <span>{Number(rate).toFixed(4)}</span>
                   <span className="text-xs text-gray-500">фиксированный</span>
                 </div>
               ))}

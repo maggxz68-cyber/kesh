@@ -274,8 +274,9 @@ function AppRouter() {
 
   // Проверяем сессию
   useEffect(() => {
-    restoreSession();
-    setIsChecking(false);
+    restoreSession().finally(() => {
+      setIsChecking(false);
+    });
   }, []);
 
   // Показываем экран загрузки, пока проверяем сессию
