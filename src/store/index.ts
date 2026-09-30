@@ -260,12 +260,19 @@ export const useStore = create<AppState>()((set, get) => ({
     delete serverData.toAccountId;
     
     const result = await api.createTransaction(currentFamilyId, serverData);
+    
+    // Пытаемся создать чек, но не блокируем операцию если это не удалось
     if (receipt && tx.hasReceipt) {
-      await api.createReceipt(currentFamilyId, {
-        transactionId: result.id, receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
-        receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
-      });
+      try {
+        await api.createReceipt(currentFamilyId, {
+          transactionId: result.id, receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
+          receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
+        });
+      } catch (error) {
+        console.warn('Не удалось создать чек, но транзакция сохранена:', error);
+      }
     }
+    
     await get().loadData(currentFamilyId);
   },
 
@@ -288,25 +295,36 @@ export const useStore = create<AppState>()((set, get) => ({
     delete serverData.toAccountId;
     
     await api.updateTransaction(currentFamilyId, id, serverData);
+    
+    // Пытаемся обновить/создать чек, но не блокируем операцию если это не удалось
     if (receipt && changes.hasReceipt) {
-      const fd = get().familiesData[currentFamilyId];
-      const existing = fd?.receipts.find(r => r.transactionId === id);
-      if (existing) {
-        await api.updateReceipt(currentFamilyId, existing.id, {
-          receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
-          receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
-        });
-      } else {
-        await api.createReceipt(currentFamilyId, {
-          transactionId: id, receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
-          receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
-        });
+      try {
+        const fd = get().familiesData[currentFamilyId];
+        const existing = fd?.receipts.find(r => r.transactionId === id);
+        if (existing) {
+          await api.updateReceipt(currentFamilyId, existing.id, {
+            receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
+            receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
+          });
+        } else {
+          await api.createReceipt(currentFamilyId, {
+            transactionId: id, receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
+            receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
+          });
+        }
+      } catch (error) {
+        console.warn('Не удалось обновить чек, но транзакция сохранена:', error);
       }
     } else if (changes.hasReceipt === false) {
-      const fd = get().familiesData[currentFamilyId];
-      const existing = fd?.receipts.find(r => r.transactionId === id);
-      if (existing) await api.deleteReceipt(currentFamilyId, existing.id);
+      try {
+        const fd = get().familiesData[currentFamilyId];
+        const existing = fd?.receipts.find(r => r.transactionId === id);
+        if (existing) await api.deleteReceipt(currentFamilyId, existing.id);
+      } catch (error) {
+        console.warn('Не удалось удалить чек, но транзакция сохранена:', error);
+      }
     }
+    
     await get().loadData(currentFamilyId);
   },
 
