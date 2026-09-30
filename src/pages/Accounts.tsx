@@ -23,16 +23,21 @@ export default function Accounts() {
 
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.name.trim()) return;
-    if (editingId) {
-      updateAccount(editingId, { name: form.name, type: form.type, currency: form.currency });
-      setEditingId(null);
-    } else {
-      addAccount({ name: form.name, type: form.type, currency: form.currency, balance: form.balance, isShared: true });
+    try {
+      if (editingId) {
+        await updateAccount(editingId, { name: form.name, type: form.type, currency: form.currency });
+        setEditingId(null);
+      } else {
+        await addAccount({ name: form.name, type: form.type, currency: form.currency, balance: form.balance, isShared: true });
+      }
+      setForm({ name: '', type: AccountType.CARD, currency: Currency.RUB, balance: 0 });
+      setShowForm(false);
+    } catch (error) {
+      console.error('Error saving account:', error);
+      alert('Ошибка при сохранении счёта');
     }
-    setForm({ name: '', type: AccountType.CARD, currency: Currency.RUB, balance: 0 });
-    setShowForm(false);
   };
 
   const startEdit = (account: Account) => {
@@ -41,14 +46,19 @@ export default function Accounts() {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const txCount = transactions.filter(t => t.accountId === id || t.toAccountId === id).length;
     if (txCount > 0) {
       if (!confirm(`На этом счёте ${txCount} операций. Они будут удалены. Продолжить?`)) return;
     } else {
       if (!confirm('Удалить счёт?')) return;
     }
-    deleteAccount(id);
+    try {
+      await deleteAccount(id);
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      alert('Ошибка при удалении счёта');
+    }
   };
 
   const getTypeIcon = (type: AccountType) => {

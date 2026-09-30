@@ -37,16 +37,11 @@ export default function Register({ onBack, onSuccess }: RegisterProps) {
 
     setIsLoading(true);
 
-    try {
-      const success = await register(name, email, password, familyName);
-      if (success) {
-        onSuccess();
-      } else {
-        setError('Пользователь с таким email уже существует');
-        setIsLoading(false);
-      }
-    } catch {
-      setError('Ошибка соединения с сервером');
+    const success = await register(name, email, password, familyName);
+    if (success) {
+      onSuccess();
+    } else {
+      setError('Пользователь с таким email уже существует');
       setIsLoading(false);
     }
   };

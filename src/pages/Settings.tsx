@@ -238,7 +238,7 @@ export default function SettingsPage() {
             <RefreshCw size={18} /> Курсы валют
           </h3>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">{exchangeRates.length} курсов</span>
+            <span className="text-xs text-gray-500">{Object.keys(exchangeRates).length} курсов</span>
             {showExchangeRates ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </div>
         </button>
@@ -246,11 +246,11 @@ export default function SettingsPage() {
         {showExchangeRates && (
           <div className="p-4 pt-0 border-t border-gray-200 dark:border-gray-700">
             <div className="space-y-2 mb-4">
-              {exchangeRates.map(r => (
-                <div key={r.id} className="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/50 text-sm">
-                  <span className="font-medium">{r.baseCode}/{r.quoteCode}</span>
-                  <span>{r.rate.toFixed(4)}</span>
-                  <span className="text-xs text-gray-500">{r.source}</span>
+              {Object.entries(exchangeRates).map(([pair, rate]) => (
+                <div key={pair} className="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/50 text-sm">
+                  <span className="font-medium">{pair.replace('_', '/')}</span>
+                  <span>{Number(rate).toFixed(4)}</span>
+                  <span className="text-xs text-gray-500">фиксированный</span>
                 </div>
               ))}
             </div>

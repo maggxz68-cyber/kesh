@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { User, UserRole, Family, AuthState } from '../types/auth';
 import api from '../api/client';
+import { User, UserRole, Family, AuthState } from '../types/auth';
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
   currentUser: null,
@@ -9,7 +9,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   users: [],
   families: [],
   isAuthenticated: false,
-  _loading: false,
 
   login: async (login: string, password: string) => {
     try {
@@ -17,7 +16,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       const user: User = {
         id: data.user.id,
         login: data.user.login,
-        password: '', // пароль не хранится на клиенте
+        password: '',
         name: data.user.name,
         email: data.user.email,
         role: data.user.role,
@@ -110,7 +109,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
   },
 
-  // Восстановление сессии из токена
   restoreSession: async () => {
     const token = localStorage.getItem('auth-token');
     if (!token) return false;
@@ -149,7 +147,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
   },
 
-  // Заглушки для совместимости (управление через API)
   addUser: () => '',
   deleteUser: async () => {},
   addFamily: () => '',

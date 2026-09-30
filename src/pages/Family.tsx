@@ -18,15 +18,17 @@ export default function Family() {
   // Получаем данные семьи через shallow-селекторы (без бесконечного цикла)
   const familyMembers = useStore(
     useShallow(state => {
-      const data = state.getCurrentFamilyData();
-      return data?.familyMembers || [];
+      const { currentFamilyId } = useAuthStore.getState();
+      if (!currentFamilyId) return [];
+      return state.familiesData[currentFamilyId]?.familyMembers || [];
     })
   );
   
   const transactions = useStore(
     useShallow(state => {
-      const data = state.getCurrentFamilyData();
-      return data?.transactions || [];
+      const { currentFamilyId } = useAuthStore.getState();
+      if (!currentFamilyId) return [];
+      return state.familiesData[currentFamilyId]?.transactions || [];
     })
   );
   
@@ -39,7 +41,7 @@ export default function Family() {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const map = new Map<string, { income: number; expense: number; count: number }>();
     
-    transactions.filter(t => new Date(t.date) >= monthStart).forEach(t => {
+    transactions.filter((t: any) => new Date(t.date) >= monthStart).forEach((t: any) => {
       const existing = map.get(t.createdById) || { income: 0, expense: 0, count: 0 };
       if (t.type === TransactionType.INCOME) existing.income += t.amount;
       if (t.type === TransactionType.EXPENSE) existing.expense += t.amount;
@@ -49,7 +51,7 @@ export default function Family() {
     return map;
   }, [transactions]);
 
-  const currentMember = familyMembers.find(m => m.userId === currentUserId);
+  const currentMember = familyMembers.find((m: any) => m.userId === currentUserId);
   const [inviteLink, setInviteLink] = useState('');
   
   useEffect(() => {
@@ -239,7 +241,7 @@ export default function Family() {
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
         <h3 className="font-semibold mb-4">Участники семьи</h3>
         <div className="space-y-3">
-          {familyMembers.map(member => {
+          {familyMembers.map((member: any) => {
             const report = memberReports.get(member.userId);
             const isCurrentUser = member.userId === currentUserId;
             return (
@@ -284,9 +286,9 @@ export default function Family() {
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
         <h3 className="font-semibold mb-3">Расходы по членам семьи (этот месяц)</h3>
         <div className="space-y-3">
-          {familyMembers.map(member => {
+          {familyMembers.map((member: any) => {
             const report = memberReports.get(member.userId) || { income: 0, expense: 0, count: 0 };
-            const maxExpense = Math.max(...familyMembers.map(m => memberReports.get(m.userId)?.expense || 0), 1);
+            const maxExpense = Math.max(...familyMembers.map((m: any) => memberReports.get(m.userId)?.expense || 0), 1);
             const percentage = (report.expense / maxExpense) * 100;
             return (
               <div key={member.id} className="flex items-center gap-3">

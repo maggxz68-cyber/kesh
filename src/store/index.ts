@@ -24,15 +24,14 @@ interface AppState {
   initialized: boolean;
   loading: boolean;
   filters: FilterState;
-  
-  // Derived data (обновляются при loadData)
+  exchangeRates: Record<string, number>;
+
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
   recurringRules: RecurringRule[];
   familyMembers: FamilyMember[];
-  exchangeRates: any[];
 
   init: () => Promise<void>;
   loadData: (familyId: string) => Promise<void>;
@@ -42,46 +41,36 @@ interface AppState {
   setFilters: (f: Partial<FilterState>) => void;
   resetFilters: () => void;
 
-  getCurrentFamilyData: () => FamilyData | null;
-  
-  // Accounts
   addAccount: (account: Omit<Account, 'id' | 'createdAt' | 'familyId'>) => Promise<void>;
-  updateAccount: (id: string, data: Partial<Account>) => Promise<void>;
+  updateAccount: (id: string, changes: Partial<Account>) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
 
-  // Categories
   addCategory: (category: Omit<Category, 'id' | 'familyId'>) => Promise<void>;
-  updateCategory: (id: string, data: Partial<Category>) => Promise<void>;
+  updateCategory: (id: string, changes: Partial<Category>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
 
-  // Transactions
   addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt' | 'familyId'>) => Promise<void>;
-  updateTransaction: (id: string, data: Partial<Transaction>) => Promise<void>;
+  updateTransaction: (id: string, changes: Partial<Transaction>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
 
-  // Budgets
   addBudget: (budget: Omit<Budget, 'id' | 'createdAt'>) => Promise<void>;
-  updateBudget: (id: string, data: Partial<Budget>) => Promise<void>;
+  updateBudget: (id: string, changes: Partial<Budget>) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
 
-  // Recurring
   addRecurringRule: (rule: Omit<RecurringRule, 'id' | 'createdAt'>) => Promise<void>;
-  updateRecurringRule: (id: string, data: Partial<RecurringRule>) => Promise<void>;
+  updateRecurringRule: (id: string, changes: Partial<RecurringRule>) => Promise<void>;
   deleteRecurringRule: (id: string) => Promise<void>;
   skipRecurringRun: (id: string, date: string) => void;
   generateRecurringTransaction: (ruleId: string) => void;
 
-  // Family members
   addFamilyMember: (member: any) => Promise<void>;
   updateMemberRole: (userId: string, role: any) => Promise<void>;
   removeFamilyMember: (userId: string) => Promise<void>;
 
-  // Receipts
   addReceipt: (receipt: Omit<Receipt, 'id'>) => Promise<void>;
-  updateReceipt: (id: string, data: Partial<Receipt>) => Promise<void>;
+  updateReceipt: (id: string, changes: Partial<Receipt>) => Promise<void>;
   deleteReceipt: (id: string) => Promise<void>;
 
-  // Helpers
   getFilteredTransactions: () => Transaction[];
   getAccountBalance: (accountId: string) => number;
   recalcBalances: () => void;
@@ -100,6 +89,10 @@ const defaultFilters: FilterState = {
   hasReceipt: null, categoryId: null, accountId: null, userId: null, search: '',
 };
 
+const defaultExchangeRates: Record<string, number> = {
+  'USD_RUB': 90, 'EUR_RUB': 98, 'KZT_RUB': 0.19, 'CNY_RUB': 12.5, 'GBP_RUB': 113,
+};
+
 export const useStore = create<AppState>()((set, get) => ({
   familiesData: {},
   currentUserId: '',
@@ -108,13 +101,13 @@ export const useStore = create<AppState>()((set, get) => ({
   initialized: false,
   loading: false,
   filters: defaultFilters,
+  exchangeRates: defaultExchangeRates,
   accounts: [],
   categories: [],
   transactions: [],
   budgets: [],
   recurringRules: [],
   familyMembers: [],
-  exchangeRates: [],
 
   init: async () => {
     const { currentFamilyId } = useAuthStore.getState();
@@ -133,94 +126,47 @@ export const useStore = create<AppState>()((set, get) => ({
         accounts: data.accounts || [],
         categories: data.categories || [],
         transactions: (data.transactions || []).map((t: any) => ({
-          ...t,
-          familyId: familyId,
-          createdById: t.created_by_id || '',
-          categoryId: t.category_id || null,
-          accountId: t.account_id || '',
-          toAccountId: null,
-          paymentMethod: t.payment_method || 'CASHLESS',
-          description: t.note || t.description || '',
-          counterparty: '',
-          hasReceipt: !!t.has_receipt,
-          receipt: null,
-          tags: [],
-          isPrivate: false,
-          recurringRuleId: null,
+          ...t, familyId, createdById: t.created_by_id || '', categoryId: t.category_id || null,
+          accountId: t.account_id || '', toAccountId: null, paymentMethod: t.payment_method || 'CASHLESS',
+          description: t.note || t.description || '', counterparty: '', hasReceipt: !!t.has_receipt,
+          receipt: null, tags: [], isPrivate: false, recurringRuleId: null,
         })),
         budgets: (data.budgets || []).map((b: any) => ({
-          ...b,
-          familyId: familyId,
-          categoryId: b.category_id,
-          startDate: b.start_date,
-          endDate: b.end_date,
+          ...b, familyId, categoryId: b.category_id, startDate: b.start_date, endDate: b.end_date,
         })),
         recurringRules: (data.recurring || []).map((r: any) => ({
-          ...r,
-          familyId: familyId,
-          categoryId: r.category_id,
-          accountId: r.account_id,
-          paymentMethod: r.payment_method,
-          nextRun: r.next_run,
-          isActive: !!r.is_active,
-          createdById: r.created_by_id,
+          ...r, familyId, categoryId: r.category_id, accountId: r.account_id,
+          paymentMethod: r.payment_method, nextRunAt: r.next_run, isActive: !!r.is_active, userId: r.created_by_id,
         })),
         familyMembers: (data.family.members || []).map((m: any) => ({
-          id: m.id,
-          userId: m.user_id,
-          name: m.name,
-          email: m.email,
-          role: m.role,
-          avatar: m.avatar,
-          color: m.color,
-          joinedAt: m.joined_at,
+          id: m.id, userId: m.user_id, name: m.name, email: m.email,
+          role: m.role, avatar: m.avatar, color: m.color, joinedAt: m.joined_at,
         })),
         receipts: [],
       };
 
-      // Загрузить чеки отдельно
       try {
         const receipts = await api.getReceipts(familyId);
         familyData.receipts = receipts.map((r: any) => ({
-          id: r.id,
-          transactionId: r.transaction_id,
-          receiptNumber: r.receipt_number || '',
-          storeName: r.store_name || '',
-          receiptDate: r.receipt_date || '',
-          totalAmount: r.total_amount || 0,
-          filePath: r.file_path || null,
-          items: (r.items || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-            total: item.total,
-          })),
+          id: r.id, transactionId: r.transaction_id, receiptNumber: r.receipt_number || '',
+          storeName: r.store_name || '', receiptDate: r.receipt_date || '',
+          totalAmount: r.total_amount || 0, filePath: r.file_path || null,
+          items: (r.items || []).map((item: any) => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price, total: item.total })),
         }));
-        
-        // Привязать чеки к транзакциям
         familyData.transactions = familyData.transactions.map(t => {
           const receipt = familyData.receipts.find(r => r.transactionId === t.id);
           return receipt ? { ...t, receipt } : t;
         });
-      } catch (e) {
-        console.error('Load receipts error:', e);
-      }
+      } catch (e) { console.error('Load receipts error:', e); }
 
       set({
         familiesData: { ...get().familiesData, [familyId]: familyData },
-        accounts: familyData.accounts,
-        categories: familyData.categories,
-        transactions: familyData.transactions,
-        budgets: familyData.budgets,
-        recurringRules: familyData.recurringRules,
-        familyMembers: familyData.familyMembers,
+        accounts: familyData.accounts, categories: familyData.categories,
+        transactions: familyData.transactions, budgets: familyData.budgets,
+        recurringRules: familyData.recurringRules, familyMembers: familyData.familyMembers,
         loading: false,
       });
-    } catch (e) {
-      console.error('Load data error:', e);
-      set({ loading: false });
-    }
+    } catch (e) { console.error('Load data error:', e); set({ loading: false }); }
   },
 
   setDarkMode: (v) => set({ darkMode: v }),
@@ -229,46 +175,25 @@ export const useStore = create<AppState>()((set, get) => ({
   setFilters: (f) => set({ filters: { ...get().filters, ...f } }),
   resetFilters: () => set({ filters: defaultFilters }),
 
-  getCurrentFamilyData: () => {
-    const { currentFamilyId } = useAuthStore.getState();
-    if (!currentFamilyId) return null;
-    return get().familiesData[currentFamilyId] || null;
-  },
-
-  // Accounts
   addAccount: async (account) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     const result = await api.createAccount(currentFamilyId, account);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            accounts: [...familyData.accounts, { ...result, familyId: currentFamilyId }],
-          },
-        },
-      });
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = [...fd.accounts, { ...result, familyId: currentFamilyId }];
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, accounts: updated } }, accounts: updated });
     }
   },
 
-  updateAccount: async (id, data) => {
+  updateAccount: async (id, changes) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    await api.updateAccount(currentFamilyId, id, data);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            accounts: familyData.accounts.map(a => a.id === id ? { ...a, ...data } : a),
-          },
-        },
-      });
+    await api.updateAccount(currentFamilyId, id, changes);
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = fd.accounts.map(a => a.id === id ? { ...a, ...changes } : a);
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, accounts: updated } }, accounts: updated });
     }
   },
 
@@ -276,54 +201,32 @@ export const useStore = create<AppState>()((set, get) => ({
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     await api.deleteAccount(currentFamilyId, id);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            accounts: familyData.accounts.filter(a => a.id !== id),
-          },
-        },
-      });
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = fd.accounts.filter(a => a.id !== id);
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, accounts: updated } }, accounts: updated });
     }
   },
 
-  // Categories
   addCategory: async (category) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     const result = await api.createCategory(currentFamilyId, category);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            categories: [...familyData.categories, { ...result, familyId: currentFamilyId }],
-          },
-        },
-      });
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = [...fd.categories, { ...result, familyId: currentFamilyId }];
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, categories: updated } }, categories: updated });
     }
   },
 
-  updateCategory: async (id, data) => {
+  updateCategory: async (id, changes) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    await api.updateCategory(currentFamilyId, id, data);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            categories: familyData.categories.map(c => c.id === id ? { ...c, ...data } : c),
-          },
-        },
-      });
+    await api.updateCategory(currentFamilyId, id, changes);
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = fd.categories.map(c => c.id === id ? { ...c, ...changes } : c);
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, categories: updated } }, categories: updated });
     }
   },
 
@@ -331,145 +234,83 @@ export const useStore = create<AppState>()((set, get) => ({
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     await api.deleteCategory(currentFamilyId, id);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            categories: familyData.categories.filter(c => c.id !== id),
-          },
-        },
-      });
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = fd.categories.filter(c => c.id !== id);
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, categories: updated } }, categories: updated });
     }
   },
 
-  // Transactions
   addTransaction: async (tx) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    
-    // Извлечь receipt из данных транзакции
     const { receipt, ...txData } = tx as any;
-    
-    // Создать транзакцию
     const result = await api.createTransaction(currentFamilyId, txData);
-    
-    // Если есть чек, создать его отдельно
     if (receipt && tx.hasReceipt) {
       await api.createReceipt(currentFamilyId, {
-        transactionId: result.id,
-        receiptNumber: receipt.receiptNumber,
-        storeName: receipt.storeName,
-        receiptDate: receipt.receiptDate,
-        totalAmount: receipt.totalAmount,
-        filePath: receipt.filePath,
-        items: receipt.items,
+        transactionId: result.id, receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
+        receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
       });
     }
-    
     await get().loadData(currentFamilyId);
   },
 
-  updateTransaction: async (id, data) => {
+  updateTransaction: async (id, changes) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    
-    // Извлечь receipt из данных транзакции
-    const { receipt, ...txData } = data as any;
-    
-    // Обновить транзакцию
+    const { receipt, ...txData } = changes as any;
     await api.updateTransaction(currentFamilyId, id, txData);
-    
-    // Если есть чек, обновить или создать его
-    if (receipt && data.hasReceipt) {
-      const familyData = get().familiesData[currentFamilyId];
-      const existingReceipt = familyData?.receipts.find(r => r.transactionId === id);
-      
-      if (existingReceipt) {
-        // Обновить существующий чек
-        await api.updateReceipt(currentFamilyId, existingReceipt.id, {
-          receiptNumber: receipt.receiptNumber,
-          storeName: receipt.storeName,
-          receiptDate: receipt.receiptDate,
-          totalAmount: receipt.totalAmount,
-          filePath: receipt.filePath,
-          items: receipt.items,
+    if (receipt && changes.hasReceipt) {
+      const fd = get().familiesData[currentFamilyId];
+      const existing = fd?.receipts.find(r => r.transactionId === id);
+      if (existing) {
+        await api.updateReceipt(currentFamilyId, existing.id, {
+          receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
+          receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
         });
       } else {
-        // Создать новый чек
         await api.createReceipt(currentFamilyId, {
-          transactionId: id,
-          receiptNumber: receipt.receiptNumber,
-          storeName: receipt.storeName,
-          receiptDate: receipt.receiptDate,
-          totalAmount: receipt.totalAmount,
-          filePath: receipt.filePath,
-          items: receipt.items,
+          transactionId: id, receiptNumber: receipt.receiptNumber, storeName: receipt.storeName,
+          receiptDate: receipt.receiptDate, totalAmount: receipt.totalAmount, filePath: receipt.filePath, items: receipt.items,
         });
       }
-    } else if (!data.hasReceipt) {
-      // Если чек был удалён, удалить его из базы
-      const familyData = get().familiesData[currentFamilyId];
-      const existingReceipt = familyData?.receipts.find(r => r.transactionId === id);
-      if (existingReceipt) {
-        await api.deleteReceipt(currentFamilyId, existingReceipt.id);
-      }
+    } else if (changes.hasReceipt === false) {
+      const fd = get().familiesData[currentFamilyId];
+      const existing = fd?.receipts.find(r => r.transactionId === id);
+      if (existing) await api.deleteReceipt(currentFamilyId, existing.id);
     }
-    
     await get().loadData(currentFamilyId);
   },
 
   deleteTransaction: async (id) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    
-    // Удалить связанный чек если есть
-    const familyData = get().familiesData[currentFamilyId];
-    const receipt = familyData?.receipts.find(r => r.transactionId === id);
-    if (receipt) {
-      await api.deleteReceipt(currentFamilyId, receipt.id);
-    }
-    
+    const fd = get().familiesData[currentFamilyId];
+    const receipt = fd?.receipts.find(r => r.transactionId === id);
+    if (receipt) await api.deleteReceipt(currentFamilyId, receipt.id);
     await api.deleteTransaction(currentFamilyId, id);
     await get().loadData(currentFamilyId);
   },
 
-  // Budgets
   addBudget: async (budget) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     const result = await api.createBudget(currentFamilyId, budget);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            budgets: [...familyData.budgets, { ...result, familyId: currentFamilyId }],
-          },
-        },
-      });
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = [...fd.budgets, { ...result, familyId: currentFamilyId }];
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, budgets: updated } }, budgets: updated });
     }
   },
 
-  updateBudget: async (id, data) => {
+  updateBudget: async (id, changes) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    await api.updateBudget(currentFamilyId, id, data);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            budgets: familyData.budgets.map(b => b.id === id ? { ...b, ...data } : b),
-          },
-        },
-      });
+    await api.updateBudget(currentFamilyId, id, changes);
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = fd.budgets.map(b => b.id === id ? { ...b, ...changes } : b);
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, budgets: updated } }, budgets: updated });
     }
   },
 
@@ -477,62 +318,40 @@ export const useStore = create<AppState>()((set, get) => ({
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     await api.deleteBudget(currentFamilyId, id);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            budgets: familyData.budgets.filter(b => b.id !== id),
-          },
-        },
-      });
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = fd.budgets.filter(b => b.id !== id);
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, budgets: updated } }, budgets: updated });
     }
   },
 
-  // Recurring
   addRecurringRule: async (rule) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     const result = await api.createRecurring(currentFamilyId, rule);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            recurringRules: [...familyData.recurringRules, { ...result, familyId: currentFamilyId }],
-          },
-        },
-      });
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = [...fd.recurringRules, { ...result, familyId: currentFamilyId }];
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, recurringRules: updated } }, recurringRules: updated });
     }
   },
 
-  updateRecurringRule: async (id, data) => {},
+  updateRecurringRule: async () => {},
+
   deleteRecurringRule: async (id) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     await api.deleteRecurring(currentFamilyId, id);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            recurringRules: familyData.recurringRules.filter(r => r.id !== id),
-          },
-        },
-      });
+    const fd = get().familiesData[currentFamilyId];
+    if (fd) {
+      const updated = fd.recurringRules.filter(r => r.id !== id);
+      set({ familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, recurringRules: updated } }, recurringRules: updated });
     }
   },
 
   skipRecurringRun: () => {},
   generateRecurringTransaction: () => {},
 
-  // Family members
   addFamilyMember: async (member) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
@@ -549,75 +368,34 @@ export const useStore = create<AppState>()((set, get) => ({
     await get().loadData(currentFamilyId);
   },
 
-  // Receipts
-  addReceipt: async (receipt: Omit<Receipt, 'id'>) => {
+  addReceipt: async (receipt) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    const result = await api.createReceipt(currentFamilyId, {
-      transactionId: receipt.transactionId,
-      receiptNumber: receipt.receiptNumber,
-      storeName: receipt.storeName,
-      receiptDate: receipt.receiptDate,
-      totalAmount: receipt.totalAmount,
-      filePath: receipt.filePath,
-      items: receipt.items,
-    });
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            receipts: [...familyData.receipts, result],
-          },
-        },
-      });
-    }
+    await api.createReceipt(currentFamilyId, receipt);
+    await get().loadData(currentFamilyId);
   },
 
-  updateReceipt: async (id: string, data: Partial<Receipt>) => {
+  updateReceipt: async (id, changes) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
-    const result = await api.updateReceipt(currentFamilyId, id, data);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            receipts: familyData.receipts.map(r => r.id === id ? result : r),
-          },
-        },
-      });
-    }
+    await api.updateReceipt(currentFamilyId, id, changes);
+    await get().loadData(currentFamilyId);
   },
 
-  deleteReceipt: async (id: string) => {
+  deleteReceipt: async (id) => {
     const { currentFamilyId } = useAuthStore.getState();
     if (!currentFamilyId) return;
     await api.deleteReceipt(currentFamilyId, id);
-    const familyData = get().familiesData[currentFamilyId];
-    if (familyData) {
-      set({
-        familiesData: {
-          ...get().familiesData,
-          [currentFamilyId]: {
-            ...familyData,
-            receipts: familyData.receipts.filter(r => r.id !== id),
-          },
-        },
-      });
-    }
+    await get().loadData(currentFamilyId);
   },
 
-  // Helpers
   getFilteredTransactions: () => {
-    const data = get().getCurrentFamilyData();
-    if (!data) return [];
+    const { currentFamilyId } = useAuthStore.getState();
+    if (!currentFamilyId) return [];
+    const fd = get().familiesData[currentFamilyId];
+    if (!fd) return [];
     const { filters } = get();
-    return data.transactions.filter(t => {
+    return fd.transactions.filter(t => {
       if (filters.dateFrom && t.date < filters.dateFrom) return false;
       if (filters.dateTo && t.date > filters.dateTo) return false;
       if (filters.type && t.type !== filters.type) return false;
@@ -626,61 +404,91 @@ export const useStore = create<AppState>()((set, get) => ({
       if (filters.categoryId && t.categoryId !== filters.categoryId) return false;
       if (filters.accountId && t.accountId !== filters.accountId) return false;
       if (filters.userId && t.createdById !== filters.userId) return false;
-      if (filters.search && !t.description?.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      if (filters.search && !(t.description || '').toLowerCase().includes(filters.search.toLowerCase())) return false;
       return true;
     });
   },
 
   getAccountBalance: (accountId) => {
-    const data = get().getCurrentFamilyData();
-    if (!data) return 0;
-    const account = data.accounts.find(a => a.id === accountId);
-    return account?.balance || 0;
+    const { currentFamilyId } = useAuthStore.getState();
+    if (!currentFamilyId) return 0;
+    return get().familiesData[currentFamilyId]?.accounts.find(a => a.id === accountId)?.balance || 0;
   },
 
   recalcBalances: () => {},
 
   getExchangeRate: (from, to) => {
     if (from === to) return 1;
+    const { exchangeRates } = get();
+    if (exchangeRates[`${from}_${to}`]) return exchangeRates[`${from}_${to}`];
+    if (exchangeRates[`${to}_${from}`]) return 1 / exchangeRates[`${to}_${from}`];
     return 1;
   },
 
   convertToBase: (amount, from) => {
     if (from === get().baseCurrency) return amount;
-    return amount;
+    return amount * get().getExchangeRate(from, get().baseCurrency);
   },
 
   getBudgetProgress: () => {
-    const data = get().getCurrentFamilyData();
-    if (!data) return [];
-    return data.budgets.map(b => ({
-      budgetId: b.id,
-      budgetName: b.name,
-      planned: b.amount,
-      actual: 0,
-      remaining: b.amount,
-      percentage: 0,
-      status: 'ok' as const,
-      currency: b.currency,
-    }));
+    const { currentFamilyId } = useAuthStore.getState();
+    if (!currentFamilyId) return [];
+    const fd = get().familiesData[currentFamilyId];
+    if (!fd) return [];
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+    return fd.budgets.map(b => {
+      const monthTxs = fd.transactions.filter(t => t.type === TransactionType.EXPENSE && t.date >= monthStart && t.date <= monthEnd && (!b.categoryId || t.categoryId === b.categoryId));
+      const actual = monthTxs.reduce((sum, t) => sum + get().convertToBase(t.amount, t.currency), 0);
+      const percentage = b.amount > 0 ? (actual / b.amount) * 100 : 0;
+      const status = percentage >= 100 ? 'danger' : percentage >= 80 ? 'warning' : 'ok';
+      return { budgetId: b.id, budgetName: b.name, planned: b.amount, actual, remaining: b.amount - actual, percentage, status, currency: b.currency };
+    });
   },
 
-  getUpcomingPayments: () => [],
-  getForecast: () => [],
-  updateExchangeRate: () => {},
+  getUpcomingPayments: (days) => {
+    const { currentFamilyId } = useAuthStore.getState();
+    if (!currentFamilyId) return [];
+    const fd = get().familiesData[currentFamilyId];
+    if (!fd) return [];
+    const now = new Date();
+    const future = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+    return fd.recurringRules
+      .filter(r => r.isActive && r.nextRunAt)
+      .filter(r => { const d = new Date(r.nextRunAt); return d >= now && d <= future; })
+      .map(r => ({ ruleId: r.id, name: r.name, amount: r.amount, currency: r.currency, nextRunAt: r.nextRunAt, freq: r.freq }))
+      .sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime());
+  },
+
+  getForecast: (months) => {
+    const { currentFamilyId } = useAuthStore.getState();
+    if (!currentFamilyId) return [];
+    const fd = get().familiesData[currentFamilyId];
+    if (!fd) return [];
+    const result: any[] = [];
+    const now = new Date();
+    for (let i = 0; i < months; i++) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const monthName = monthDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+      const last3 = fd.transactions.filter(t => { const diff = (now.getTime() - new Date(t.date).getTime()) / (1000 * 60 * 60 * 24 * 30); return diff <= 3; });
+      const avgExpense = last3.filter(t => t.type === TransactionType.EXPENSE).reduce((s, t) => s + t.amount, 0) / 3;
+      const avgIncome = last3.filter(t => t.type === TransactionType.INCOME).reduce((s, t) => s + t.amount, 0) / 3;
+      result.push({ month: monthName, income: avgIncome, expense: avgExpense, balance: avgIncome - avgExpense });
+    }
+    return result;
+  },
+
+  updateExchangeRate: (base, quote, rate) => {
+    set({ exchangeRates: { ...get().exchangeRates, [`${base}_${quote}`]: rate } });
+  },
+
   refreshRates: () => {},
   resetDemoData: () => {},
 }));
 
-// Helper functions
 export function formatCurrency(amount: number, currency: Currency = Currency.RUB): string {
-  const symbols: Record<Currency, string> = {
-    [Currency.RUB]: '₽',
-    [Currency.USD]: '$',
-    [Currency.EUR]: '€',
-    [Currency.KZT]: '₸',
-    [Currency.CNY]: '¥',
-  };
+  const symbols: Record<string, string> = { RUB: '₽', USD: '$', EUR: '€', KZT: '₸', CNY: '¥', GBP: '£' };
   return `${amount.toLocaleString('ru-RU', { maximumFractionDigits: 0 })} ${symbols[currency] || currency}`;
 }
 
@@ -693,16 +501,7 @@ export function exportToCSV(transactions: Transaction[], accounts: Account[], ca
   const rows = transactions.map(t => {
     const cat = categories.find(c => c.id === t.categoryId);
     const acc = accounts.find(a => a.id === t.accountId);
-    return [
-      formatDate(t.date),
-      t.type === 'INCOME' ? 'Доход' : 'Расход',
-      t.amount,
-      t.currency,
-      cat?.name || '',
-      acc?.name || '',
-      t.paymentMethod === 'CASH' ? 'Наличные' : 'Карта',
-      t.description || '',
-    ].join(',');
+    return [formatDate(t.date), t.type === 'INCOME' ? 'Доход' : 'Расход', t.amount, t.currency, cat?.name || '', acc?.name || '', t.paymentMethod === 'CASH' ? 'Наличные' : 'Карта', t.description || ''].join(',');
   });
   return [headers.join(','), ...rows].join('\n');
 }

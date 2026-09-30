@@ -27,22 +27,16 @@ export default function Login({ onRegister }: LoginProps) {
     setError('');
     setIsLoading(true);
 
-    try {
-      const success = await login(loginValue, password);
-      if (success) {
-        window.location.href = '/';
-      } else {
-        setError('Неверный логин или пароль');
-        setIsLoading(false);
-      }
-    } catch {
-      setError('Ошибка соединения с сервером');
+    const success = await login(loginValue, password);
+    if (success) {
+      window.location.href = '/';
+    } else {
+      setError('Неверный логин или пароль');
       setIsLoading(false);
     }
   };
 
   const handleDemo = async () => {
-    setIsLoading(true);
     await loginDemo();
     window.location.href = '/';
   };
@@ -62,16 +56,11 @@ export default function Login({ onRegister }: LoginProps) {
     }
 
     setIsLoading(true);
-    try {
-      const success = await joinFamilyByCode(joinCode, joinName, joinEmail, joinPassword);
-      if (success) {
-        window.location.href = '/';
-      } else {
-        setError('Неверный код приглашения или email уже занят');
-        setIsLoading(false);
-      }
-    } catch {
-      setError('Ошибка соединения с сервером');
+    const success = await joinFamilyByCode(joinCode, joinName, joinEmail, joinPassword);
+    if (success) {
+      window.location.href = '/';
+    } else {
+      setError('Неверный код приглашения или email уже занят');
       setIsLoading(false);
     }
   };

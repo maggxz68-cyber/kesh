@@ -26,16 +26,21 @@ export default function Categories() {
   const expenseCategories = categories.filter(c => c.type === TransactionType.EXPENSE);
   const incomeCategories = categories.filter(c => c.type === TransactionType.INCOME);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.name.trim()) return;
-    if (editingId) {
-      updateCategory(editingId, form);
-      setEditingId(null);
-    } else {
-      addCategory(form);
+    try {
+      if (editingId) {
+        await updateCategory(editingId, form);
+        setEditingId(null);
+      } else {
+        await addCategory(form);
+      }
+      setForm({ name: '', type: TransactionType.EXPENSE, icon: '📦', color: '#6b7280', parentId: null });
+      setShowForm(false);
+    } catch (error) {
+      console.error('Error saving category:', error);
+      alert('Ошибка при сохранении категории');
     }
-    setForm({ name: '', type: TransactionType.EXPENSE, icon: '📦', color: '#6b7280', parentId: null });
-    setShowForm(false);
   };
 
   const startEdit = (id: string) => {
@@ -46,9 +51,14 @@ export default function Categories() {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('Удалить категорию? Операции с этой категорией останутся без категории.')) {
-      deleteCategory(id);
+      try {
+        await deleteCategory(id);
+      } catch (error) {
+        console.error('Error deleting category:', error);
+        alert('Ошибка при удалении категории');
+      }
     }
   };
 
