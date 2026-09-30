@@ -22,32 +22,26 @@ export default function Login({ onRegister }: LoginProps) {
   const [joinPassword, setJoinPassword] = useState('');
   const [joinShowPassword, setJoinShowPassword] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    try {
-      const success = await login(loginValue, password);
-      if (success) {
-        window.location.href = '/';
-      } else {
-        setError('Неверный логин или пароль');
-        setIsLoading(false);
-      }
-    } catch {
-      setError('Ошибка соединения с сервером');
+    const success = login(loginValue, password);
+    if (success) {
+      window.location.href = '/';
+    } else {
+      setError('Неверный логин или пароль');
       setIsLoading(false);
     }
   };
 
-  const handleDemo = async () => {
-    setIsLoading(true);
-    await loginDemo();
+  const handleDemo = () => {
+    loginDemo();
     window.location.href = '/';
   };
 
-  const handleJoinFamily = async (e: React.FormEvent) => {
+  const handleJoinFamily = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -62,16 +56,11 @@ export default function Login({ onRegister }: LoginProps) {
     }
 
     setIsLoading(true);
-    try {
-      const success = await joinFamilyByCode(joinCode, joinName, joinEmail, joinPassword);
-      if (success) {
-        window.location.href = '/';
-      } else {
-        setError('Неверный код приглашения или email уже занят');
-        setIsLoading(false);
-      }
-    } catch {
-      setError('Ошибка соединения с сервером');
+    const success = joinFamilyByCode(joinCode, joinName, joinEmail, joinPassword);
+    if (success) {
+      window.location.href = '/';
+    } else {
+      setError('Неверный код приглашения или email уже занят');
       setIsLoading(false);
     }
   };

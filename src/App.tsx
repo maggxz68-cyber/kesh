@@ -272,11 +272,10 @@ function AppRouter() {
   const { isAuthenticated, currentFamilyId, currentUser, restoreSession } = useAuthStore();
   const [isChecking, setIsChecking] = useState(true);
 
-  // Проверяем токен из localStorage ПЕРЕД тем, как решать, что показывать
+  // Проверяем сессию
   useEffect(() => {
-    restoreSession().finally(() => {
-      setIsChecking(false);
-    });
+    restoreSession();
+    setIsChecking(false);
   }, []);
 
   // Показываем экран загрузки, пока проверяем сессию
