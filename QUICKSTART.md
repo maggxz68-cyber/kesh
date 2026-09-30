@@ -64,10 +64,30 @@ nano .env  # Измените JWT_SECRET!
 
 ---
 
+## 📤 Загрузка в GitHub
+
+```bash
+# 1. Создайте репозиторий на GitHub
+
+# 2. Инициализация Git
+./git-init.sh
+
+# 3. Пуш в GitHub
+./git-push.sh <your-username> <repo-name>
+
+# 4. Обновление кода
+./git-update.sh
+```
+
+Подробная инструкция: [GITHUB.md](GITHUB.md)
+
+---
+
 ## 📚 Документация
 
 - [README.md](README.md) - Основная документация
 - [DOCKER.md](DOCKER.md) - Подробное руководство по Docker
+- [GITHUB.md](GITHUB.md) - Работа с GitHub
 - [server/README.md](server/README.md) - API документация
 
 ---

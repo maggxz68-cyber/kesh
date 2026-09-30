@@ -1,5 +1,47 @@
+# Dependencies
 node_modules/
-.next/
+server/node_modules/
+
+# Build output
 dist/
-build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Database
+server/budget.db
+server/*.db
+backups/
+
+# Docker volumes
+docker-data/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.next/
+build/

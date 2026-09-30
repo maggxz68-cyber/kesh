@@ -326,6 +326,41 @@ spec:
           claimName: family-budget-data
 ```
 
+## 📤 Работа с GitHub
+
+### Первый коммит
+
+```bash
+# 1. Инициализация Git
+./git-init.sh
+
+# 2. Создайте репозиторий на GitHub (например: family-budget)
+
+# 3. Пуш в GitHub
+./git-push.sh <your-username> <repo-name>
+```
+
+### Обновление кода
+
+```bash
+# Быстрое обновление (commit + push)
+./git-update.sh
+```
+
+### Полный сброс и пуш
+
+```bash
+# ⚠️ Полностью перезаписывает историю в GitHub
+./git-reset-push.sh <your-username> <repo-name>
+```
+
+### Скрипты для Git
+
+- `git-init.sh` - Инициализация Git репозитория
+- `git-push.sh` - Пуш кода в GitHub
+- `git-update.sh` - Быстрое обновление (commit + push)
+- `git-reset-push.sh` - Полный сброс и force push
+
 ## 📝 Лицензия
 
 MIT
