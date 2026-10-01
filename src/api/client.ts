@@ -241,6 +241,13 @@ class ApiClient {
     });
   }
 
+  async updateRecurring(familyId: string, id: string, data: any) {
+    return this.request<any>(`/families/${familyId}/recurring/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   // ============ RECEIPTS ============
   async getReceipts(familyId: string) {
     return this.request<any[]>(`/families/${familyId}/receipts`);

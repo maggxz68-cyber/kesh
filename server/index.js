@@ -222,13 +222,16 @@ if (!demoUser) {
 
   // Демо транзакции
   const now = new Date();
+  const transactionIds = [];
   for (let i = 0; i < 20; i++) {
     const d = new Date(now);
     d.setDate(d.getDate() - Math.floor(Math.random() * 30));
     const isIncome = Math.random() > 0.7;
-    db.prepare(`INSERT INTO transactions (id, family_id, type, amount, currency, date, category_id, account_id, payment_method, note, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    const txId = uuidv4();
+    transactionIds.push(txId);
+    db.prepare(`INSERT INTO transactions (id, family_id, type, amount, currency, date, category_id, account_id, payment_method, note, has_receipt, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
-        uuidv4(),
+        txId,
         'demo-family-001',
         isIncome ? 'INCOME' : 'EXPENSE',
         Math.floor(Math.random() * 5000) + 100,
@@ -238,9 +241,64 @@ if (!demoUser) {
         Math.random() > 0.5 ? 'acc-demo-001' : 'acc-demo-002',
         Math.random() > 0.5 ? 'CASH' : 'CASHLESS',
         '',
+        Math.random() > 0.5 ? 1 : 0,
         'demo-user-001'
       );
   }
+  
+  // Демо чеки (для 10 транзакций)
+  for (let i = 0; i < 10; i++) {
+    const txId = transactionIds[i];
+    const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(txId);
+    if (tx) {
+      const receiptId = uuidv4();
+      db.prepare(`INSERT INTO receipts (id, transaction_id, family_id, receipt_number, store_name, receipt_date, total_amount, file_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(
+          receiptId,
+          txId,
+          'demo-family-001',
+          `Чек №${10000 + i}`,
+          ['Пятёрочка', 'Магнит', 'Перекрёсток', 'Ашан', 'Лента'][Math.floor(Math.random() * 5)],
+          tx.date,
+          tx.amount,
+          null
+        );
+      
+      // Демо позиции чека
+      const itemCount = Math.floor(Math.random() * 3) + 1;
+      for (let j = 0; j < itemCount; j++) {
+        const itemPrice = tx.amount / itemCount;
+        db.prepare(`INSERT INTO receipt_items (id, receipt_id, name, quantity, price, total) VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(
+            uuidv4(),
+            receiptId,
+            ['Молоко', 'Хлеб', 'Яблоки', 'Сыр', 'Мясо'][j % 5],
+            1,
+            itemPrice,
+            itemPrice
+          );
+      }
+    }
+  }
+  
+  // Демо бюджеты
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  db.prepare(`INSERT INTO budgets (id, family_id, name, category_id, amount, currency, period, scope, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(uuidv4(), 'demo-family-001', 'Продукты', 'cat-demo-001', 15000, 'RUB', 'monthly', 'family', `${currentMonth}-01`, `${currentMonth}-31`);
+  db.prepare(`INSERT INTO budgets (id, family_id, name, category_id, amount, currency, period, scope, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(uuidv4(), 'demo-family-001', 'Транспорт', 'cat-demo-002', 5000, 'RUB', 'monthly', 'family', `${currentMonth}-01`, `${currentMonth}-31`);
+  db.prepare(`INSERT INTO budgets (id, family_id, name, category_id, amount, currency, period, scope, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(uuidv4(), 'demo-family-001', 'Развлечения', 'cat-demo-003', 3000, 'RUB', 'monthly', 'family', `${currentMonth}-01`, `${currentMonth}-31`);
+  
+  // Демо регулярные платежи
+  const nextMonth = new Date();
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  db.prepare(`INSERT INTO recurring_rules (id, family_id, name, type, amount, currency, category_id, account_id, payment_method, frequency, next_run, is_active, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(uuidv4(), 'demo-family-001', 'Зарплата', 'INCOME', 80000, 'RUB', 'cat-demo-004', 'acc-demo-002', 'CASHLESS', 'monthly', nextMonth.toISOString(), 1, 'demo-user-001');
+  db.prepare(`INSERT INTO recurring_rules (id, family_id, name, type, amount, currency, category_id, account_id, payment_method, frequency, next_run, is_active, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(uuidv4(), 'demo-family-001', 'Коммунальные услуги', 'EXPENSE', 5000, 'RUB', 'cat-demo-005', 'acc-demo-002', 'CASHLESS', 'monthly', nextMonth.toISOString(), 1, 'demo-user-001');
+  db.prepare(`INSERT INTO recurring_rules (id, family_id, name, type, amount, currency, category_id, account_id, payment_method, frequency, next_run, is_active, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(uuidv4(), 'demo-family-001', 'Интернет и связь', 'EXPENSE', 1500, 'RUB', 'cat-demo-005', 'acc-demo-002', 'CASHLESS', 'monthly', nextMonth.toISOString(), 1, 'demo-user-001');
 }
 
 // ==========================================
@@ -659,6 +717,14 @@ app.post('/api/families/:familyId/recurring', authMiddleware, familyAccess, (req
   db.prepare(`INSERT INTO recurring_rules (id, family_id, name, type, amount, currency, category_id, account_id, payment_method, frequency, next_run, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(id, req.familyId, name, type, amount, currency || 'RUB', categoryId || null, accountId || null, paymentMethod || 'CASHLESS', frequency || 'monthly', nextRun || null, req.user.id);
   const rule = db.prepare('SELECT * FROM recurring_rules WHERE id = ?').get(id);
+  res.json(rule);
+});
+
+app.put('/api/families/:familyId/recurring/:id', authMiddleware, familyAccess, (req, res) => {
+  const { name, type, amount, currency, categoryId, accountId, paymentMethod, frequency, nextRun, isActive } = req.body;
+  db.prepare(`UPDATE recurring_rules SET name=?, type=?, amount=?, currency=?, category_id=?, account_id=?, payment_method=?, frequency=?, next_run=?, is_active=? WHERE id=? AND family_id=?`)
+    .run(name, type, amount, currency, categoryId || null, accountId || null, paymentMethod, frequency, nextRun || null, isActive ? 1 : 0, req.params.id, req.familyId);
+  const rule = db.prepare('SELECT * FROM recurring_rules WHERE id = ?').get(req.params.id);
   res.json(rule);
 });
 
