@@ -13,7 +13,8 @@ export default function AdminPanel() {
   const {
     currentUser, users, families,
     addUser, deleteUser, addFamily, deleteFamily,
-    addMemberToFamily, removeMemberFromFamily, updateMemberRole, logout
+    addMemberToFamily, removeMemberFromFamily, updateMemberRole, logout,
+    loadAdminData
   } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -26,6 +27,13 @@ export default function AdminPanel() {
   const [backupStatus, setBackupStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Загрузка данных при монтировании
+  React.useEffect(() => {
+    if (currentUser?.role === UserRole.SUPER_ADMIN) {
+      loadAdminData();
+    }
+  }, [currentUser, loadAdminData]);
 
   // Проверка прав доступа
   if (!currentUser || currentUser.role !== UserRole.SUPER_ADMIN) {
@@ -47,9 +55,15 @@ export default function AdminPanel() {
     setShowAddUser(false);
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     if (confirm('Удалить пользователя? Это действие необратимо.')) {
-      deleteUser(userId);
+      try {
+        await deleteUser(userId);
+        await loadAdminData(); // Перезагрузить данные после удаления
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        alert('Ошибка при удалении пользователя');
+      }
     }
   };
 
@@ -60,9 +74,15 @@ export default function AdminPanel() {
     setShowAddFamily(false);
   };
 
-  const handleDeleteFamily = (familyId: string) => {
+  const handleDeleteFamily = async (familyId: string) => {
     if (confirm('Удалить семью? Все связанные данные будут потеряны.')) {
-      deleteFamily(familyId);
+      try {
+        await deleteFamily(familyId);
+        await loadAdminData(); // Перезагрузить данные после удаления
+      } catch (error) {
+        console.error('Error deleting family:', error);
+        alert('Ошибка при удалении семьи');
+      }
     }
   };
 

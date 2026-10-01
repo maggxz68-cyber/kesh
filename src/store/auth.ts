@@ -148,9 +148,25 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   addUser: () => '',
-  deleteUser: async () => {},
+  deleteUser: async (userId: string) => {
+    try {
+      await api.adminDeleteUser(userId);
+      set({ users: get().users.filter(u => u.id !== userId) });
+    } catch (e) {
+      console.error('Delete user error:', e);
+      throw e;
+    }
+  },
   addFamily: () => '',
-  deleteFamily: async () => {},
+  deleteFamily: async (familyId: string) => {
+    try {
+      await api.adminDeleteFamily(familyId);
+      set({ families: get().families.filter(f => f.id !== familyId) });
+    } catch (e) {
+      console.error('Delete family error:', e);
+      throw e;
+    }
+  },
   addMemberToFamily: async () => {},
   removeMemberFromFamily: async () => {},
   updateMemberRole: async () => {},
@@ -205,6 +221,39 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       return result.code;
     } catch {
       return '';
+    }
+  },
+
+  loadAdminData: async () => {
+    try {
+      const [usersData, familiesData] = await Promise.all([
+        api.adminGetUsers(),
+        api.adminGetFamilies(),
+      ]);
+
+      const users: User[] = usersData.map((u: any) => ({
+        id: u.id,
+        login: u.login,
+        password: '',
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        familyIds: [],
+        createdAt: u.created_at || new Date().toISOString(),
+      }));
+
+      const families: Family[] = familiesData.map((f: any) => ({
+        id: f.id,
+        name: f.name,
+        ownerId: f.owner_id,
+        memberIds: [],
+        memberRoles: {},
+        createdAt: f.created_at || new Date().toISOString(),
+      }));
+
+      set({ users, families });
+    } catch (e) {
+      console.error('Load admin data error:', e);
     }
   },
 }));

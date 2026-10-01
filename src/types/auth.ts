@@ -55,4 +55,7 @@ export interface AuthState {
   addFamilyMemberWithAccount: (familyId: string, name: string, email: string, password: string, role?: UserRole) => Promise<string | null>;
   joinFamilyByCode: (code: string, name: string, email: string, password: string) => Promise<boolean>;
   generateInviteCode: (familyId: string) => Promise<string>;
+  
+  // Admin methods
+  loadAdminData: () => Promise<void>;
 }
