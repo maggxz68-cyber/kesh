@@ -1,49 +1,12 @@
-# Dependencies
 node_modules
-server/node_modules
-
-# Build output
-dist
-
-# Docker files
-Dockerfile
-docker-compose.yml
-.dockerignore
-
-# Git
+npm-debug.log
+Dockerfile*
+docker-compose*
 .git
 .gitignore
-
-# IDE
-.vscode
-.idea
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Environment
 .env
 .env.local
-.env.*.local
-
-# Testing
-coverage
-.nyc_output
-
-# Misc
+.env.production
+README.md
 *.md
-LICENSE
-docs/
-
-# Database (не включать в образ)
-server/budget.db
-server/*.db
+.DS_Store
