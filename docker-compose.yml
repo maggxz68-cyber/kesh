@@ -1,84 +1,34 @@
 version: '3.8'
 
 services:
-  # Основное приложение
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: family-budget-app
+  backend:
+    build: ./backend
+    container_name: finance-backend
     restart: unless-stopped
-    ports:
-      - "${APP_PORT:-3001}:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - JWT_SECRET=${JWT_SECRET:-change-this-in-production-use-strong-random-string}
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - DB_PATH=/app/data/finance.db
     volumes:
-      # Persistent storage для базы данных SQLite
-      - budget-data:/app/data
+      - backend-data:/app/data
     networks:
-      - budget-network
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      - finance-network
 
-  # Nginx reverse proxy (опционально, для production)
-  nginx:
-    image: nginx:alpine
-    container_name: family-budget-nginx
-    restart: unless-stopped
-    ports:
-      - "${NGINX_PORT:-80}:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - app
-    networks:
-      - budget-network
-    profiles:
-      - with-nginx
-
-volumes:
-  budget-data:
-    driver: local
-
-networks:
-  budget-network:
-    driver: bridge
-services:
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: kesh_frontend
-    restart: always
+    build: ./frontend
+    container_name: finance-frontend
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
       - backend
     networks:
-      - kesh_network
-
-  backend:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
-    container_name: kesh_backend
-    restart: always
-    expose:
-      - "3001"
-    volumes:
-      - db_data:/app/data
-    networks:
-      - kesh_network
-
-networks:
-  kesh_network:
-    driver: bridge
+      - finance-network
 
 volumes:
-  db_data:
+  backend-data:
+
+networks:
+  finance-network:
+    driver: bridge

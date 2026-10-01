@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.gitignore
+.env
+.env.local
+*.md
+*.log
+.DS_Store
+.vscode
+.idea
+backups
+*.tar.gz

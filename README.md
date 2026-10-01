@@ -1,377 +1,293 @@
-# Семейный бюджет - Онлайн приложение
+# 💰 Финансовый трекер
 
-Веб-приложение для учёта семейных финансов с серверной архитектурой. Все данные хранятся на сервере и доступны с любого устройства через интернет.
+Простая и эффективная система учёта личных финансов с серверной архитектурой.
 
 ## 🚀 Возможности
 
-- **Учёт транзакций** - доходы, расходы, переводы
-- **Семейный доступ** - несколько пользователей в одной семье
-- **Бюджеты** - планирование и контроль расходов по категориям
-- **Регулярные платежи** - автоматическое создание повторяющихся транзакций
-- **Отчёты и аналитика** - графики, диаграммы, статистика
-- **Мультивалютность** - поддержка RUB, USD, EUR, KZT, CNY
-- **Синхронизация** - все данные автоматически синхронизируются через сервер
+- ✅ Регистрация и авторизация пользователей
+- ✅ Управление счетами (наличные, карты, банки)
+- ✅ Учёт доходов и расходов
+- ✅ Категории с иконками
+- ✅ Сводка по финансам (неделя/месяц/год)
+- ✅ Автоматический пересчёт балансов
+- ✅ Серверное хранение данных
+- ✅ Docker для простого деплоя
 
 ## 🏗️ Архитектура
 
-Приложение состоит из двух частей:
+- **Backend**: Node.js + Express + SQLite
+- **Frontend**: React + Vite + Tailwind CSS
+- **Database**: SQLite (файловая БД)
+- **Deploy**: Docker + Docker Compose
 
-### Frontend (React + Vite)
-- Современный React с TypeScript
-- Vite для быстрой сборки
-- Tailwind CSS для стилей
-- Zustand для управления состоянием
-- Recharts для графиков
-- PWA поддержка
+## 📋 Требования
 
-### Backend (Node.js + Express)
-- Express.js сервер
-- SQLite база данных
-- JWT аутентификация
-- REST API
+- Ubuntu 20.04+ (или любой Linux)
+- Docker 20.10+
+- Docker Compose 2.0+
 
-**Важно**: Все данные хранятся на сервере. Локальные устройства не хранят никаких данных (кроме токена авторизации).
+## 🚀 Быстрый старт
 
-## 📦 Установка и запуск
-
-### 1. Клонирование и установка зависимостей
+### 1. Установка Docker на Ubuntu
 
 ```bash
-# Установка зависимостей фронтенда
-npm install
+# Обновление пакетов
+sudo apt update
+sudo apt upgrade -y
 
-# Установка зависимостей сервера
-cd server
-npm install
-cd ..
+# Установка Docker
+sudo apt install -y docker.io docker-compose-plugin
+
+# Добавление пользователя в группу docker
+sudo usermod -aG docker $USER
+
+# Перезагрузка (или перелогиньтесь)
+newgrp docker
 ```
 
-### 2. Запуск в режиме разработки
-
-**Терминал 1 - Сервер:**
-```bash
-cd server
-npm start
-```
-Сервер запустится на `http://localhost:3001`
-
-**Терминал 2 - Frontend:**
-```bash
-npm run dev
-```
-Frontend запустится на `http://localhost:3000` с проксированием API на сервер
-
-### 3. Production сборка
+### 2. Клонирование проекта
 
 ```bash
-# Собрать frontend
-npm run build
-
-# Запустить сервер (обслуживает и API и статику)
-cd server
-npm start
+git clone <your-repo-url>
+cd finance-tracker
 ```
 
-Приложение будет доступно на `http://localhost:3001`
+### 3. Настройка
 
-## 🔐 Демо-доступ
+```bash
+# Копирование примера .env
+cp .env.example .env
 
-- **Демо пользователь**: `demo` / `demo`
-- **Администратор**: `admin` / `1968`
+# Редактирование .env (ОБЯЗАТЕЛЬНО измените JWT_SECRET!)
+nano .env
+```
 
-## 📱 Использование
+### 4. Запуск
 
-### Регистрация и вход
+```bash
+# Сборка и запуск
+docker compose up -d --build
+
+# Проверка статуса
+docker compose ps
+
+# Просмотр логов
+docker compose logs -f
+```
+
+### 5. Открыть приложение
+
+Откройте браузер: `http://your-server-ip`
+
+## 📖 Использование
+
+### Регистрация
 
 1. Откройте приложение
-2. Войдите с демо-доступом или создайте свою семью
-3. Пригласите членов семьи через код приглашения
+2. Нажмите "Зарегистрируйтесь"
+3. Введите имя, email и пароль
+4. Нажмите "Зарегистрироваться"
 
-### Основные функции
+### Добавление счёта
 
-- **Дашборд** - обзор финансов, балансы счетов, последние транзакции
-- **Транзакции** - добавление, редактирование, фильтрация операций
-- **Бюджеты** - создание бюджетов по категориям, отслеживание прогресса
-- **Регулярные платежи** - настройка автоматических транзакций
-- **Отчёты** - аналитика по категориям, счетам, членам семьи, датам
-- **Семья** - управление участниками, коды приглашений
-- **Настройки** - экспорт данных, курсы валют, тема оформления
+1. Перейдите в "Счета"
+2. Нажмите "Добавить счёт"
+3. Заполните название, тип, валюту и начальный баланс
+4. Нажмите "Добавить"
 
-### Синхронизация
+### Добавление категории
 
-Все данные автоматически синхронизируются через сервер:
-- Изменения сохраняются сразу при каждом действии
-- Доступ к данным с любого устройства
-- Не требуется ручная синхронизация
+1. Перейдите в "Категории"
+2. Нажмите "Добавить категорию"
+3. Выберите тип (расход/доход)
+4. Укажите название, иконку и цвет
+5. Нажмите "Добавить"
 
-## 🛠️ Технологии
+### Добавление транзакции
 
-### Frontend
-- React 18
-- TypeScript
-- Vite
-- Tailwind CSS
-- Zustand (state management)
-- React Router
-- Recharts (графики)
-- Lucide React (иконки)
+1. Перейдите в "Транзакции"
+2. Нажмите "Добавить"
+3. Выберите тип (доход/расход)
+4. Укажите сумму, счёт, категорию, дату и описание
+5. Нажмите "Добавить"
 
-### Backend
-- Node.js
-- Express.js
-- SQLite (better-sqlite3)
-- JWT (jsonwebtoken)
-- bcryptjs (хеширование паролей)
-- CORS
+## 🔧 Управление
 
-## 📂 Структура проекта
+### Остановка
 
+```bash
+docker compose down
 ```
-├── src/                    # Frontend исходники
-│   ├── api/               # API клиент
-│   ├── components/        # React компоненты
-│   ├── pages/             # Страницы приложения
-│   ├── store/             # Zustand stores
-│   ├── types/             # TypeScript типы
-│   └── utils/             # Утилиты
-├── server/                # Backend
-│   ├── index.js          # Express сервер
-│   ├── package.json      # Зависимости сервера
-│   └── README.md         # Документация сервера
-├── dist/                  # Production сборка
-└── package.json          # Зависимости фронтенда
+
+### Перезапуск
+
+```bash
+docker compose restart
+```
+
+### Обновление
+
+```bash
+# Получить последние изменения
+git pull
+
+# Пересобрать и перезапустить
+docker compose up -d --build
+```
+
+### Просмотр логов
+
+```bash
+# Все логи
+docker compose logs -f
+
+# Только backend
+docker compose logs -f backend
+
+# Только frontend
+docker compose logs -f frontend
+```
+
+### Резервное копирование
+
+```bash
+# Остановить контейнеры
+docker compose down
+
+# Создать бэкап
+docker run --rm -v finance-tracker_backend-data:/data -v $(pwd):/backup alpine tar czf /backup/backup-$(date +%Y%m%d-%H%M%S).tar.gz /data
+
+# Запустить обратно
+docker compose up -d
+```
+
+### Восстановление из бэкапа
+
+```bash
+# Остановить контейнеры
+docker compose down
+
+# Удалить старые данные
+docker volume rm finance-tracker_backend-data
+
+# Восстановить из бэкапа
+docker run --rm -v finance-tracker_backend-data:/data -v $(pwd):/backup alpine tar xzf /backup/backup-YYYYMMDD-HHMMSS.tar.gz -C /
+
+# Запустить
+docker compose up -d
 ```
 
 ## 🔒 Безопасность
 
-- Все пароли хешируются с помощью bcrypt
-- JWT токены для аутентификации
-- Проверка доступа к данным семьи
-- Защита API endpoints middleware
+### Обязательно измените:
 
-## 📊 API
+1. **JWT_SECRET** в `.env` - используйте длинную случайную строку:
+   ```bash
+   openssl rand -base64 32
+   ```
 
-Полная документация API доступна в [server/README.md](server/README.md)
+2. **Настройте firewall**:
+   ```bash
+   sudo ufw allow 80/tcp
+   sudo ufw allow 22/tcp
+   sudo ufw enable
+   ```
 
-Основные endpoints:
-- `/api/auth/*` - аутентификация
-- `/api/families/*` - управление семьями
-- `/api/families/:id/transactions` - транзакции
-- `/api/families/:id/accounts` - счета
-- `/api/families/:id/categories` - категории
-- `/api/families/:id/budgets` - бюджеты
+3. **Используйте HTTPS** (опционально):
+   - Установите Nginx как reverse proxy
+   - Получите SSL сертификат через Let's Encrypt
+   - Настройте редирект с HTTP на HTTPS
 
-## 🐳 Docker
+## 📊 Структура проекта
 
-### Быстрый старт (Production)
-
-```bash
-# 1. Клонировать репозиторий
-git clone <repo>
-cd family-budget
-
-# 2. Скопировать .env файл и настроить
-cp .env.example .env
-# Отредактируйте .env (особенно JWT_SECRET!)
-
-# 3. Запустить приложение
-./docker-start.sh
-
-# Или вручную:
-docker-compose up -d --build
+```
+finance-tracker/
+├── backend/
+│   ├── index.js          # API сервер
+│   ├── package.json      # Зависимости backend
+│   └── Dockerfile        # Docker образ backend
+├── frontend/
+│   ├── src/
+│   │   ├── pages/        # Страницы приложения
+│   │   ├── components/   # Компоненты
+│   │   ├── api.js        # API клиент
+│   │   ├── App.jsx       # Главный компонент
+│   │   └── main.jsx      # Точка входа
+│   ├── package.json      # Зависимости frontend
+│   ├── nginx.conf        # Конфигурация Nginx
+│   └── Dockerfile        # Docker образ frontend
+├── docker-compose.yml    # Оркестрация контейнеров
+├── .env.example          # Пример переменных окружения
+└── README.md             # Этот файл
 ```
 
-Приложение будет доступно на `http://localhost:3001`
+## 🐛 Решение проблем
 
-### Режим разработки
+### Порт 80 уже занят
 
-```bash
-# Запустить frontend и backend в отдельных контейнерах с hot reload
-./docker-dev.sh
-
-# Или вручную:
-docker-compose -f docker-compose.dev.yml up -d --build
-```
-
-- Frontend: `http://localhost:3000` (с hot reload)
-- Backend: `http://localhost:3001` (с hot reload)
-
-### Команды Docker
-
-```bash
-# Просмотр логов
-docker-compose logs -f
-
-# Остановка
-docker-compose down
-
-# Перезапуск
-docker-compose restart
-
-# Полная пересборка
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-
-# Доступ к базе данных
-docker exec -it family-budget-app sh
-# SQLite: sqlite3 /app/data/budget.db
-```
-
-### С Nginx (опционально)
-
-Для production с reverse proxy:
-
-```bash
-docker-compose --profile with-nginx up -d
-```
-
-Приложение будет доступно на `http://localhost:80`
-
-### Структура Docker файлов
-
-- `Dockerfile` - Multi-stage build для production
-- `Dockerfile.frontend.dev` - Frontend для разработки
-- `server/Dockerfile.dev` - Backend для разработки
-- `docker-compose.yml` - Production конфигурация
-- `docker-compose.dev.yml` - Development конфигурация
-- `nginx.conf` - Конфигурация Nginx reverse proxy
-- `.env.example` - Пример переменных окружения
-- `.dockerignore` - Исключения для Docker build
-
-### Переменные окружения
-
-| Переменная | Описание | По умолчанию |
-|------------|----------|--------------|
-| `APP_PORT` | Порт приложения | `3001` |
-| `JWT_SECRET` | Секретный ключ JWT | `change-this-in-production` |
-| `NGINX_PORT` | Порт Nginx | `80` |
-| `NODE_ENV` | Режим работы | `production` |
-
-### Volumes
-
-- `budget-data` - Persistent storage для SQLite базы данных
-
-Данные сохраняются между перезапусками контейнеров.
-
-### Health Check
-
-Контейнер имеет встроенный health check:
-
-```bash
-docker inspect --format='{{.State.Health.Status}}' family-budget-app
-```
-
-## 🌐 Деплой
-
-### Вариант 1: VPS/Сервер (без Docker)
-
-```bash
-# На сервере
-git clone <repo>
-cd family-budget
-npm install
-cd server && npm install && cd ..
-npm run build
-cd server && npm start
-```
-
-### Вариант 2: Docker (рекомендуется)
-
-См. секцию [🐳 Docker](#-docker) выше.
-
-### Вариант 3: Облачные платформы
-
-- **Frontend**: Vercel, Netlify
-- **Backend**: Railway, Render, Heroku, DigitalOcean App Platform
-- **База данных**: SQLite в volume, или мигрировать на PostgreSQL
-
-### Вариант 4: Kubernetes
-
-Для масштабирования можно использовать Kubernetes:
-
+Измените порт в `docker-compose.yml`:
 ```yaml
-# Пример deployment (упрощённый)
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: family-budget
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: family-budget
-  template:
-    metadata:
-      labels:
-        app: family-budget
-    spec:
-      containers:
-      - name: app
-        image: your-registry/family-budget:latest
-        ports:
-        - containerPort: 3001
-        env:
-        - name: JWT_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: family-budget-secrets
-              key: jwt-secret
-        volumeMounts:
-        - name: data
-          mountPath: /app/data
-      volumes:
-      - name: data
-        persistentVolumeClaim:
-          claimName: family-budget-data
+ports:
+  - "8080:80"  # Измените 8080 на нужный порт
 ```
 
-## 📤 Работа с GitHub
+### Backend не запускается
 
-### Первый коммит
-
+Проверьте логи:
 ```bash
-# 1. Инициализация Git
-./git-init.sh
-
-# 2. Создайте репозиторий на GitHub (например: family-budget)
-
-# 3. Пуш в GitHub
-./git-push.sh <your-username> <repo-name>
+docker compose logs backend
 ```
 
-### Обновление кода
+### Frontend не подключается к backend
 
+Проверьте, что backend запущен:
 ```bash
-# Быстрое обновление (commit + push)
-./git-update.sh
+docker compose ps
 ```
 
-### Полный сброс и пуш
+### Ошибка "Permission denied"
 
+Добавьте пользователя в группу docker:
 ```bash
-# ⚠️ Полностью перезаписывает историю в GitHub
-./git-reset-push.sh <your-username> <repo-name>
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
-### Скрипты для Git
+## 📝 API Endpoints
 
-- `git-init.sh` - Инициализация Git репозитория
-- `git-push.sh` - Пуш кода в GitHub
-- `git-update.sh` - Быстрое обновление (commit + push)
-- `git-reset-push.sh` - Полный сброс и force push
+### Аутентификация
+- `POST /api/auth/register` - Регистрация
+- `POST /api/auth/login` - Вход
+- `GET /api/auth/me` - Текущий пользователь
 
-## 📝 Лицензия
+### Счета
+- `GET /api/accounts` - Список счетов
+- `POST /api/accounts` - Создать счёт
+- `PUT /api/accounts/:id` - Обновить счёт
+- `DELETE /api/accounts/:id` - Удалить счёт
+
+### Категории
+- `GET /api/categories` - Список категорий
+- `POST /api/categories` - Создать категорию
+- `PUT /api/categories/:id` - Обновить категорию
+- `DELETE /api/categories/:id` - Удалить категорию
+
+### Транзакции
+- `GET /api/transactions` - Список транзакций
+- `POST /api/transactions` - Создать транзакцию
+- `PUT /api/transactions/:id` - Обновить транзакцию
+- `DELETE /api/transactions/:id` - Удалить транзакцию
+
+### Сводка
+- `GET /api/summary?period=month` - Сводка (week/month/year)
+
+## 📄 Лицензия
 
 MIT
 
 ## 🤝 Поддержка
 
 При возникновении проблем:
-1. Проверьте что сервер запущен
-2. Проверьте логи сервера и браузера (F12)
-3. Убедитесь что порт 3001 доступен
-
----
-
-**Важно**: Приложение работает только онлайн. Все данные хранятся на сервере и доступны через интернет.
+1. Проверьте логи: `docker compose logs`
+2. Убедитесь, что все контейнеры запущены: `docker compose ps`
+3. Проверьте, что порты не заняты: `sudo netstat -tulpn | grep :80`
