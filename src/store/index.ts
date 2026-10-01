@@ -507,9 +507,10 @@ export const useStore = create<AppState>()(
           // Offline режим
           const fd = get().familiesData[currentFamilyId];
           if (fd) {
+            const txId = uuidv4();
             const newTx: Transaction = {
               ...tx,
-              id: uuidv4(),
+              id: txId,
               familyId: currentFamilyId,
               createdAt: new Date().toISOString(),
             } as Transaction;
@@ -526,10 +527,24 @@ export const useStore = create<AppState>()(
               });
             }
             
+            // Сохраняем чек если есть
+            let updatedReceipts = fd.receipts;
+            const { receipt } = tx as any;
+            if (receipt && tx.hasReceipt) {
+              const newReceipt: Receipt = {
+                ...receipt,
+                id: receipt.id || uuidv4(),
+                transactionId: txId,
+              } as Receipt;
+              updatedReceipts = [...fd.receipts, newReceipt];
+              newTx.receipt = newReceipt;
+            }
+            
             const updated = {
               ...fd,
               transactions: [newTx, ...fd.transactions],
               accounts: updatedAccounts,
+              receipts: updatedReceipts,
             };
             
             set({
@@ -597,10 +612,33 @@ export const useStore = create<AppState>()(
           // Offline режим
           const fd = get().familiesData[currentFamilyId];
           if (fd) {
-            const updated = fd.transactions.map(t => t.id === id ? { ...t, ...changes } : t);
+            let updatedTransactions = fd.transactions.map(t => t.id === id ? { ...t, ...changes } : t);
+            
+            // Обновляем чек если есть
+            let updatedReceipts = fd.receipts;
+            const { receipt } = changes as any;
+            if (receipt && changes.hasReceipt) {
+              const existingIdx = updatedReceipts.findIndex(r => r.transactionId === id);
+              if (existingIdx >= 0) {
+                updatedReceipts = updatedReceipts.map((r, i) => i === existingIdx ? { ...r, ...receipt } : r);
+              } else {
+                const newReceipt: Receipt = {
+                  ...receipt,
+                  id: receipt.id || uuidv4(),
+                  transactionId: id,
+                } as Receipt;
+                updatedReceipts = [...updatedReceipts, newReceipt];
+              }
+              const foundReceipt = updatedReceipts.find(r => r.transactionId === id);
+              updatedTransactions = updatedTransactions.map(t => t.id === id ? { ...t, receipt: foundReceipt || null } : t) as Transaction[];
+            } else if (changes.hasReceipt === false) {
+              updatedReceipts = updatedReceipts.filter(r => r.transactionId !== id);
+              updatedTransactions = updatedTransactions.map(t => t.id === id ? { ...t, receipt: null } : t) as Transaction[];
+            }
+            
             set({
-              familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, transactions: updated } },
-              transactions: updated,
+              familiesData: { ...get().familiesData, [currentFamilyId]: { ...fd, transactions: updatedTransactions, receipts: updatedReceipts } },
+              transactions: updatedTransactions,
             });
           }
         }
