@@ -15,6 +15,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from loguru import logger
+from sqlalchemy.orm import noload
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -25,6 +26,17 @@ from app.models.receipt import Receipt, ReceiptItem, ReceiptTransaction
 from app.models.transaction import Transaction
 from app.schemas.reports import ReceiptOut, ReceiptParseResult, ReceiptUpdate
 from app.services import fns, ocr
+
+async def _refresh_noload(db, obj):
+    """Обновить scalar-поля объекта, не триггеря lazy-load relationships (async-safe)."""
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy.orm import load_only
+
+    mp = type(obj).mapper
+    cols = [c for c in mp.columns if c is not None]
+    attrs = [mp.attrs[c.key] for c in cols if c.key in mp.attrs]
+    await db.refresh(obj, load_options=[load_only(*attrs)])
+
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
@@ -155,7 +167,7 @@ async def upload_receipt(
             r.parse_status = ReceiptParseStatus.FAILED
             await db.flush()
 
-    await db.refresh(r)
+    await _refresh_noload(db, r)
     return _to_out(r)
 
 
@@ -222,7 +234,7 @@ async def parse_receipt(receipt_id: str, db: DbDep, current: CurrentUserDep) -> 
     """Явный запуск распознавания (индикатор обработки на /scan, ТЗ 7.7)."""
     r = await _get_receipt(db, current, parse_uuid(receipt_id))
     method, fns_check = await _parse_internal(db, r)
-    await db.refresh(r)
+    await _refresh_noload(db, r)
     return ReceiptParseResult(receipt=_to_out(r, include_payload=True), method=method, fns_check=fns_check)
 
 
@@ -282,7 +294,7 @@ async def update_receipt(receipt_id: str, body: ReceiptUpdate, db: DbDep, curren
         for tx in txs:
             tx.has_receipt = True
     await db.flush()
-    await db.refresh(r)
+    await _refresh_noload(db, r)
     return _to_out(r)
 
 

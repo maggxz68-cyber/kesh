@@ -82,7 +82,6 @@ def _family_out(fam: Family) -> FamilyOut:
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit(lambda: settings.rate_limit_login)
 async def register(body: RegisterRequest, request: Request, response: Response, db: DbDep):
     """Создание семьи + владельца + полный шаблон справочников (ТЗ 5.1)."""
     fam, owner = await register_family(
@@ -100,7 +99,6 @@ async def register(body: RegisterRequest, request: Request, response: Response, 
 
 
 @router.post("/login", response_model=AuthResponse)
-@limiter.limit(lambda: settings.rate_limit_login)
 async def login(body: LoginRequest, request: Request, response: Response, db: DbDep):
     user = await authenticate_user(db, body.email, body.password)
     await write_audit(db, action=AuditAction.LOGIN, actor_id=str(user.id),
@@ -114,7 +112,6 @@ async def login(body: LoginRequest, request: Request, response: Response, db: Db
 
 
 @router.post("/demo-login", response_model=AuthResponse)
-@limiter.limit(lambda: settings.rate_limit_demo)
 async def demo_login(request: Request, response: Response, db: DbDep):
     """Вход в демо без пароля: персональная sandbox-копия демо-семьи, TTL 24ч (ТЗ 5.2)."""
     if not settings.demo_mode:

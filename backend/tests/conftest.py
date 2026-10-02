@@ -58,17 +58,21 @@ async def db_session():
 
 
 @pytest.fixture
-def client():
+async def client():
     """Httpx-клиент с lifespan (тот же движок/БД, что и в тестах)."""
+    from contextlib import asynccontextmanager
+
     from httpx import ASGITransport, AsyncClient
 
+    from app.db.session import engine
     from app.main import app
 
+    @asynccontextmanager
+    async def _no_lifespan(_app):  # lifespan уже выполнен setup_logging — безопасно, но пропускаем дубль
+        yield
+
+    app.router.lifespan_context = _no_lifespan
     transport = ASGITransport(app=app)
-
-    class _Client(AsyncClient):
-        def request(self, *a, **kw):  # noqa: D102
-            return super().request(*a, **kw)
-
-    with _Client(transport=transport, base_url="http://test") as c:
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+    await engine.dispose()

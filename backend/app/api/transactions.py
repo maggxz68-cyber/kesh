@@ -10,6 +10,7 @@ from datetime import date, datetime, time, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import noload
 from sqlalchemy import func, or_, select
 
 from app.core.deps import CurrentUser, DbDep, csrf_guard, get_current_user, parse_uuid
@@ -27,6 +28,17 @@ from app.schemas.transactions import (
     TransferCreate,
 )
 from app.services.balances import affected_account_ids, mark_accounts_dirty
+
+async def _refresh_noload(db, obj):
+    """Обновить scalar-поля объекта, не триггеря lazy-load relationships (async-safe)."""
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy.orm import load_only
+
+    mp = type(obj).mapper
+    cols = [c for c in mp.columns if c is not None]
+    attrs = [mp.attrs[c.key] for c in cols if c.key in mp.attrs]
+    await db.refresh(obj, load_options=[load_only(*attrs)])
+
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
@@ -221,7 +233,7 @@ async def create_transaction(body: TransactionCreate, db: DbDep, current: Curren
         db.add(ReceiptTransaction(receipt_id=body.receipt_id, transaction_id=tx.id))
         await db.flush()
     mark_accounts_dirty(db, affected_account_ids(tx))
-    await db.refresh(tx)
+    await _refresh_noload(db, tx)
     return _to_out(tx)
 
 
@@ -267,7 +279,7 @@ async def update_transaction(tx_id: str, body: TransactionUpdate, db: DbDep, cur
             setattr(tx, k, v)
     mark_accounts_dirty(db, set(old_ids) | set(affected_account_ids(tx)))
     await db.flush()
-    await db.refresh(tx)
+    await _refresh_noload(db, tx)
     return _to_out(tx)
 
 
@@ -326,5 +338,5 @@ async def create_transfer(body: TransferCreate, db: DbDep, current: CurrentUserD
     db.add(tx)
     await db.flush()
     mark_accounts_dirty(db, affected_account_ids(tx))
-    await db.refresh(tx)
+    await _refresh_noload(db, tx)
     return _to_out(tx)
