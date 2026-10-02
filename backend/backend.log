@@ -1,2 +1,11 @@
 2026-10-02 07:28:01.882 | INFO     | app.main:lifespan:15 - Starting Family Finance Tracker env=development
 2026-10-02 07:30:57.797 | INFO     | app.main:lifespan:15 - Starting Family Finance Tracker env=development
+2026-10-02 09:51:24.838 | INFO     | app.services.seed:ensure_superadmin:98 - seed: создан супер-админ 'admin'
+2026-10-02 09:51:25.683 | INFO     | app.services.seed:seed_demo_family:379 - seed: демо-транзакций создано: 161
+2026-10-02 09:51:25.840 | INFO     | app.services.seed:seed_demo_family:383 - seed: демо-чеков создано: 10
+2026-10-02 09:51:25.879 | INFO     | __main__:main:50 - seed OK: family=Семья Ивановых id=a0081333-3982-432e-b775-25fd17f278e0
+2026-10-02 09:51:39.128 | INFO     | __main__:main:50 - seed OK: family=Семья Ивановых id=a0081333-3982-432e-b775-25fd17f278e0
+2026-10-02 09:56:03.406 | INFO     | app.services.seed:ensure_superadmin:98 - seed: создан супер-админ 'admin'
+2026-10-02 09:56:04.233 | INFO     | app.services.seed:seed_demo_family:379 - seed: демо-транзакций создано: 161
+2026-10-02 09:56:04.388 | INFO     | app.services.seed:seed_demo_family:383 - seed: демо-чеков создано: 10
+2026-10-02 09:56:04.425 | INFO     | __main__:main:50 - seed OK: family=Семья Ивановых id=fb668811-f374-4246-8f16-f0151d91eb40

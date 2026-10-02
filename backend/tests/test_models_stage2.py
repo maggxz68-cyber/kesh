@@ -22,7 +22,7 @@ from app.db.base import Base  # noqa: E402
 from app.models.enums import AccountType, CategoryKind, TransactionType, UserRole  # noqa: E402
 from app.models.family import Family, User  # noqa: E402
 from app.models.reference import Account, Category  # noqa: E402
-from app.models.transaction import Transaction  # noqa: E402
+from app.models.transaction import Transaction, affected_account_ids, mark_accounts_dirty  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -76,14 +76,18 @@ NOW = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
 async def test_income_expense_transfer_balances(session: AsyncSession):
     fam, owner, cash, card = await _mk_family(session)
 
-    session.add(Transaction(family_id=fam.id, author_id=owner.id, type=TransactionType.INCOME,
-                            amount=Decimal("1000.00"), account_id=cash.id, occurred_at=NOW))
+    tx = Transaction(family_id=fam.id, author_id=owner.id, type=TransactionType.INCOME,
+                     amount=Decimal("1000.00"), account_id=cash.id, occurred_at=NOW)
+    session.add(tx)
+    mark_accounts_dirty(session, affected_account_ids(tx))
     await session.commit()
     await session.refresh(cash)
     assert cash.balance == Decimal("1100.00")
 
-    session.add(Transaction(family_id=fam.id, author_id=owner.id, type=TransactionType.EXPENSE,
-                            amount=Decimal("50.00"), account_id=cash.id, occurred_at=NOW))
+    tx2 = Transaction(family_id=fam.id, author_id=owner.id, type=TransactionType.EXPENSE,
+                      amount=Decimal("50.00"), account_id=cash.id, occurred_at=NOW)
+    session.add(tx2)
+    mark_accounts_dirty(session, affected_account_ids(tx2))
     await session.commit()
     await session.refresh(cash)
     assert cash.balance == Decimal("1050.00")
@@ -92,6 +96,7 @@ async def test_income_expense_transfer_balances(session: AsyncSession):
                      amount=Decimal("200.00"), account_id=cash.id,
                      target_account_id=card.id, occurred_at=NOW)
     session.add(tr)
+    mark_accounts_dirty(session, affected_account_ids(tr))
     await session.commit()
     await session.refresh(cash)
     await session.refresh(card)
@@ -105,11 +110,10 @@ async def test_soft_delete_recalc(session: AsyncSession):
     tr = Transaction(family_id=fam.id, author_id=owner.id, type=TransactionType.EXPENSE,
                      amount=Decimal("30.00"), account_id=cash.id, occurred_at=NOW)
     session.add(tr)
+    mark_accounts_dirty(session, affected_account_ids(tr))
     await session.commit()
     await session.refresh(cash)
     assert cash.balance == Decimal("70.00")
-
-    from app.models.transaction import mark_accounts_dirty
 
     tr.deleted_at = datetime.now(timezone.utc)
     mark_accounts_dirty(session, [cash.id])
@@ -122,8 +126,10 @@ async def test_soft_delete_recalc(session: AsyncSession):
 async def test_cascade_delete_family(session: AsyncSession):
     """Soft delete семьи не трогает данные; hard delete (CASCADE) убирает всё."""
     fam, owner, cash, card = await _mk_family(session)
-    session.add(Transaction(family_id=fam.id, author_id=owner.id, type=TransactionType.INCOME,
-                            amount=Decimal("10.00"), account_id=cash.id, occurred_at=NOW))
+    tx3 = Transaction(family_id=fam.id, author_id=owner.id, type=TransactionType.INCOME,
+                      amount=Decimal("10.00"), account_id=cash.id, occurred_at=NOW)
+    session.add(tx3)
+    mark_accounts_dirty(session, affected_account_ids(tx3))
     await session.commit()
     tx_id = str(uuid.uuid4())  # заглушка не нужна, просто фиксируем что транзакции есть
 

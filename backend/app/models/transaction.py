@@ -20,7 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.event import listens_for
+# (listens_for не используется: автопересчёт вынесен в app/services/balances.py)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -37,56 +37,16 @@ transaction_tags = Table(
 )
 
 
-async def recalc_account_balance(session, account_id: _uuid.UUID | None) -> None:
-    """Пересчёт кэшированного баланса счёта по проводкам (источник истины — транзакции).
-
-    Вызывается из FamilySession.commit() (async). UPDATE выполняется через Core
-    с synchronize_session=False, затем ORM-объект принудительно refresh()ится —
-    так баланс корректно обновляется даже если объект уже был загружен в identity map.
-    """
-    if account_id is None:
-        return
-    from sqlalchemy import func, select, update
-    from app.models.reference import Account
-
-    acc = await session.get(Account, account_id)
-    if acc is None:
-        return
-    T = Transaction.__table__
-    live = T.c.deleted_at.is_(None)
-
-    outflow = (
-        await session.execute(
-            select(func.coalesce(func.sum(T.c.amount), 0)).where(
-                T.c.account_id == account_id, live, T.c.type.in_(["expense", "transfer"])
-            )
-        )
-    ).scalar_one()
-    inflow_part1 = (
-        await session.execute(
-            select(func.coalesce(func.sum(T.c.amount), 0)).where(
-                T.c.account_id == account_id, live, T.c.type == "income"
-            )
-        )
-    ).scalar_one()
-    inflow_part2 = (
-        await session.execute(
-            select(func.coalesce(func.sum(T.c.amount), 0)).where(
-                T.c.target_account_id == account_id, live, T.c.type == "transfer"
-            )
-        )
-    ).scalar_one()
-    new_balance = acc.opening_balance + Decimal(inflow_part1) + Decimal(inflow_part2) - Decimal(outflow)
-    # UPDATE через Core (synchronize_session=False), затем принудительный refresh()
-    # ORM-объекта: иначе identity map может держать старое значение и затереть его
-    # при следующем flush().
-    await session.execute(
-        update(Account.__table__)
-        .where(Account.__table__.c.id == account_id)
-        .values(balance=new_balance)
-        .execution_options(synchronize_session=False)
-    )
-    await session.refresh(acc)
+# --- Автопересчёт балансов счетов --------------------------------------------
+# Реализация вынесена в app/services/balances.py (явный контракт вместо ORM-хуков:
+# в async-сессии mapper-события исполняются в sync-bridge и ненадёжны).
+# Совместимые реэкспорты:
+from app.services.balances import (  # noqa: E402,F401
+    affected_account_ids,
+    apply_pending_balance_recalc,
+    mark_accounts_dirty,
+    recalc_account_balance,
+)
 
 
 class Transaction(Base, TimestampMixin, SoftDeleteMixin):
@@ -184,86 +144,14 @@ class Budget(Base, TimestampMixin, SoftDeleteMixin):
     )
 
 
-# --- Автопересчёт балансов счетов при изменении транзакций -------------------
-# after-события mapper исполняются в sync-bridge внутри async-сессии,
-# поэтому берём object_session(target) и накапливаем «грязные» счета на сессии.
-
-def _affected_accounts(target) -> list:
-    ids = [target.account_id, target.target_account_id]
-    return [i for i in ids if i is not None]
-
-
-def mark_accounts_dirty(session, account_ids) -> None:
-    """Публичный хелпер: отметить счета для пересчёта баланса перед коммитом.
-
-    Используется сервисами при soft-delete (deleted_at = now()), когда ORM-update
-    не меняет account_id и after_update-хук не срабатывает на нужный счёт.
-    """
-    _mark_dirty(session, account_ids)
-
-
-def _mark_dirty(session, account_ids) -> None:
-    dirty = getattr(session, "_dirty_accounts", None)
-    if dirty is None:
-        dirty = set()
-        session._dirty_accounts = dirty  # type: ignore[attr-defined]
-    dirty.update(account_ids)
-
-
-def _register_dirty(session, account_ids) -> None:
-    """Надёжная регистрация «грязных» счетов.
-
-    Внутри after-хуков SQLAlchemy (sync-bridge) `object_session(target)` может
-    возвращать sync-обёртку AsyncSession, отличную от самого объекта AsyncSession,
-    поэтому пишем множество и в sync-сессию, и (если это обёртка) в её async-владелца.
-    """
-    _mark_dirty(session, account_ids)
-    inner = getattr(session, "_session", None)  # AsyncSession._session -> SyncSession
-    if inner is not None and inner is not session:
-        _mark_dirty(inner, account_ids)
-    owner = getattr(session, "_async_session", None)  # AsyncSession самой sync-сессии
-    if owner is not None and owner is not session:
-        _mark_dirty(owner, account_ids)
-
-
-@listens_for(Transaction, "after_insert")
-def _tx_after_insert(mapper, connection, target):
-    from sqlalchemy.orm import object_session
-
-    s = object_session(target)
-    if s is not None:
-        _register_dirty(s, _affected_accounts(target))
-
-
-@listens_for(Transaction, "after_update")
-def _tx_after_update(mapper, connection, target):
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy.orm import object_session
-
-    dirty = set(_affected_accounts(target))
-    state = sa_inspect(target)
-    for attr in ("account_id", "target_account_id"):
-        h = state.attrs[attr].history
-        if h.has_changes():
-            dirty.update(v for v in list(h.deleted) + list(h.added) if v is not None)
-    s = object_session(target)
-    if s is not None:
-        _register_dirty(s, dirty)
-
-
-async def apply_pending_balance_recalc(session) -> None:
-    """Пересчёт «грязных» счетов. Вызывается из FamilySession.commit()."""
-    dirty = getattr(session, "_dirty_accounts", None) or set()
-    # подстраховка: забираем накопленное в sync-сессии (см. _register_dirty)
-    inner = getattr(session, "_session", None)
-    if inner is not None:
-        extra = getattr(inner, "_dirty_accounts", None)
-        if extra:
-            dirty = set(dirty) | set(extra)
-            inner._dirty_accounts = set()  # type: ignore[attr-defined]
-    if not dirty:
-        return
-    for acc_id in sorted(dirty, key=str):
-        await recalc_account_balance(session, acc_id)
-    session._dirty_accounts = set()  # type: ignore[attr-defined]
+# --- Автопересчёт балансов счетов --------------------------------------------
+# Реализация вынесена в app/services/balances.py (явный контракт вместо ORM-хуков:
+# в async-сессии mapper-события исполняются в sync-bridge и ненадёжны).
+# Совместимые реэкспорты:
+from app.services.balances import (  # noqa: E402,F401
+    affected_account_ids,
+    apply_pending_balance_recalc,
+    mark_accounts_dirty,
+    recalc_account_balance,
+)
 
