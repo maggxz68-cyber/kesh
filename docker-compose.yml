@@ -1,34 +1,112 @@
-version: '3.8'
+# Family Finance Tracker — production-ready compose stack
+# Services: postgres 16, backend (FastAPI), scheduler (cron-задачи), frontend (nginx SPA), nginx (reverse-proxy + TLS)
+name: family-finance
 
 services:
-  backend:
-    build: ./backend
-    container_name: finance-backend
+  postgres:
+    image: postgres:16-alpine
+    container_name: ff-postgres
     restart: unless-stopped
     environment:
-      - NODE_ENV=production
-      - PORT=3001
-      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
-      - DB_PATH=/app/data/finance.db
+      POSTGRES_DB: ${POSTGRES_DB:-family_finance}
+      POSTGRES_USER: ${POSTGRES_USER:-ffuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      TZ: ${TZ:-Europe/Moscow}
     volumes:
-      - backend-data:/app/data
-    networks:
-      - finance-network
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ffuser} -d ${POSTGRES_DB:-family_finance}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [ffnet]
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ff-backend:${TAG:-latest}
+    container_name: ff-backend
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      RECEIPTS_DIR: /data/receipts
+      LOG_PATH: /logs/backend.log
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - receipts_data:/data/receipts
+      - backend_logs:/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks: [ffnet]
+
+  # Фоновые задачи: очистка sandbox-копий (TTL 24ч), ежедневный сброс демо-семьи
+  scheduler:
+    image: ff-backend:${TAG:-latest}
+    container_name: ff-scheduler
+    restart: unless-stopped
+    command: ["python", "-m", "app.services.scheduler"]
+    env_file: [.env]
+    environment:
+      RECEIPTS_DIR: /data/receipts
+      LOG_PATH: /logs/scheduler.log
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - receipts_data:/data/receipts
+      - backend_logs:/logs
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [ffnet]
 
   frontend:
-    build: ./frontend
-    container_name: finance-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api}
+    image: ff-frontend:${TAG:-latest}
+    container_name: ff-frontend
+    restart: unless-stopped
+    networks: [ffnet]
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ff-nginx
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_certs:/etc/letsencrypt:ro
+      - nginx_webroot:/var/www/certbot:ro
     depends_on:
+      - frontend
       - backend
-    networks:
-      - finance-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/nginx-health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks: [ffnet]
 
 volumes:
-  backend-data:
+  pg_data:
+  receipts_data:
+  nginx_certs:
+  nginx_webroot:
+  backend_logs:
 
 networks:
-  finance-network:
+  ffnet:
     driver: bridge

@@ -1,341 +1,40 @@
-# 💰 Финансовый трекер
+# Family Finance Tracker — учёт семейных доходов и расходов
+# Multi-tenant (изоляция по family_id), роли: superadmin / owner / member.
 
-Простая и эффективная система учёта личных финансов с серверной архитектурой.
+## Архитектура
+- backend/  — FastAPI + SQLAlchemy 2.0 (async) + Alembic + PostgreSQL 16
+- frontend/ — React 18 + TypeScript + Vite + TailwindCSS + PWA
+- nginx/    — reverse-proxy, HTTPS (Let's Encrypt), SPA + /api
+- docker-compose.yml — postgres + backend + scheduler + frontend + nginx
 
-## 🚀 Возможности
-
-- ✅ Регистрация и авторизация пользователей
-- ✅ Управление счетами (наличные, карты, банки)
-- ✅ Учёт доходов и расходов
-- ✅ Категории с иконками
-- ✅ Сводка по финансам (неделя/месяц/год)
-- ✅ Автоматический пересчёт балансов
-- ✅ Серверное хранение данных
-- ✅ Docker для простого деплоя
-
-## 🏗️ Архитектура
-
-- **Backend**: Node.js + Express + SQLite
-- **Frontend**: React + Vite + Tailwind CSS
-- **Database**: SQLite (файловая БД)
-- **Deploy**: Docker + Docker Compose
-
-## 📋 Требования
-
-- Ubuntu 20.04+ (или любой Linux)
-- Docker 20.10+
-- Docker Compose 2.0+
-
-## 🚀 Быстрый старт
-
-### 1. Установка Docker на Ubuntu
-
+## Быстрый старт (dev, без Docker)
 ```bash
-# Обновление пакетов
-sudo apt update
-sudo apt upgrade -y
+cd backend && python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]"
+cp ../.env.example .env   # заполните DATABASE_URL / JWT_SECRET
+alembic upgrade head
+python scripts/seed.py    # супер-админ admin/1968 + демо-семья
+uvicorn app.main:app --reload --port 8000
 
-# Установка Docker
-sudo apt install -y docker.io docker-compose-plugin
-
-# Добавление пользователя в группу docker
-sudo usermod -aG docker $USER
-
-# Перезагрузка (или перелогиньтесь)
-newgrp docker
+cd ../frontend && npm install && npm run dev -- --port 5173
 ```
 
-### 2. Клонирование проекта
-
+## Прод (Docker)
 ```bash
-git clone <your-repo-url>
-cd finance-tracker
+cp .env.example .env      # задайте POSTGRES_PASSWORD, JWT_SECRET, DOMAIN
+./deploy.sh               # первичный деплой на Ubuntu 22.04/24.04
+docker compose ps         # проверка healthcheck'ов
 ```
 
-### 3. Настройка
-
-```bash
-# Копирование примера .env
-cp .env.example .env
-
-# Редактирование .env (ОБЯЗАТЕЛЬНО измените JWT_SECRET!)
-nano .env
-```
-
-### 4. Запуск
-
-```bash
-# Сборка и запуск
-docker compose up -d --build
-
-# Проверка статуса
-docker compose ps
-
-# Просмотр логов
-docker compose logs -f
-```
-
-### 5. Открыть приложение
-
-Откройте браузер: `http://your-server-ip`
-
-## 🔐 Учётные записи
-
-### Демо-пользователь (для тестирования)
-- **Логин**: `demo`
-- **Пароль**: `demo`
-- **Имя**: Иван Петров
-- **Роль**: Глава семьи
-- Включает обширные демо-данные для тестирования всех функций
-
-### Члены демо-семьи
-- **Мария Петрова** (жена)
-  - Логин: `wife`
-  - Пароль: `wife123`
-  
-- **Алексей Петров** (сын)
-  - Логин: `son`
-  - Пароль: `son123`
-
-### Супер-администратор (для управления системой)
-- **Логин**: `admin`
-- **Пароль**: `1968`
-- Доступ к админ-панели для управления пользователями и семьями
-
-⚠️ **Важно**: В production измените пароли или создайте новых администраторов!
-
-📖 Подробная информация: [ACCOUNTS.md](ACCOUNTS.md)
-
-## 📊 Демо-данные
-
-При первом запуске автоматически создаются обширные демо-данные:
-
-### Статистика
-- 👥 **3 члена семьи** (Иван, Мария, Алексей Петровы)
-- 🏦 **5 счетов** (Наличные, Карта, Накопительный, Кредитная, Валютный)
-- 📂 **15 категорий** (Продукты, Транспорт, Развлечения, Зарплата и др.)
-- 💰 **150 транзакций** за последние 3 месяца
-- 🧾 **80 чеков** с позициями товаров
-- 💵 **10 бюджетов** по категориям
-- 🔁 **10 регулярных платежей** (доходы и расходы)
-
-### Финансовый обзор
-- **Общий баланс**: ~710,000 ₽
-- **Ежемесячный доход**: ~125,000 ₽
-- **Ежемесячный расход**: ~83,000 ₽
-- **Чистая прибыль**: ~42,000 ₽/месяц
-
-📖 Подробная информация: [DEMO_DATA.md](DEMO_DATA.md)
-
-## 📖 Использование
-
-### Регистрация
-
-1. Откройте приложение
-2. Нажмите "Зарегистрируйтесь"
-3. Введите имя, email и пароль
-4. Нажмите "Зарегистрироваться"
-
-### Добавление счёта
-
-1. Перейдите в "Счета"
-2. Нажмите "Добавить счёт"
-3. Заполните название, тип, валюту и начальный баланс
-4. Нажмите "Добавить"
-
-### Добавление категории
-
-1. Перейдите в "Категории"
-2. Нажмите "Добавить категорию"
-3. Выберите тип (расход/доход)
-4. Укажите название, иконку и цвет
-5. Нажмите "Добавить"
-
-### Добавление транзакции
-
-1. Перейдите в "Транзакции"
-2. Нажмите "Добавить"
-3. Выберите тип (доход/расход)
-4. Укажите сумму, счёт, категорию, дату и описание
-5. Нажмите "Добавить"
-
-## 🔧 Управление
-
-### Остановка
-
-```bash
-docker compose down
-```
-
-### Перезапуск
-
-```bash
-docker compose restart
-```
-
-### Обновление
-
-```bash
-# Получить последние изменения
-git pull
-
-# Пересобрать и перезапустить
-docker compose up -d --build
-```
-
-### Просмотр логов
-
-```bash
-# Все логи
-docker compose logs -f
-
-# Только backend
-docker compose logs -f backend
-
-# Только frontend
-docker compose logs -f frontend
-```
-
-### Резервное копирование
-
-```bash
-# Остановить контейнеры
-docker compose down
-
-# Создать бэкап
-docker run --rm -v finance-tracker_backend-data:/data -v $(pwd):/backup alpine tar czf /backup/backup-$(date +%Y%m%d-%H%M%S).tar.gz /data
-
-# Запустить обратно
-docker compose up -d
-```
-
-### Восстановление из бэкапа
-
-```bash
-# Остановить контейнеры
-docker compose down
-
-# Удалить старые данные
-docker volume rm finance-tracker_backend-data
-
-# Восстановить из бэкапа
-docker run --rm -v finance-tracker_backend-data:/data -v $(pwd):/backup alpine tar xzf /backup/backup-YYYYMMDD-HHMMSS.tar.gz -C /
-
-# Запустить
-docker compose up -d
-```
-
-## 🔒 Безопасность
-
-### Обязательно измените:
-
-1. **JWT_SECRET** в `.env` - используйте длинную случайную строку:
-   ```bash
-   openssl rand -base64 32
-   ```
-
-2. **Настройте firewall**:
-   ```bash
-   sudo ufw allow 80/tcp
-   sudo ufw allow 22/tcp
-   sudo ufw enable
-   ```
-
-3. **Используйте HTTPS** (опционально):
-   - Установите Nginx как reverse proxy
-   - Получите SSL сертификат через Let's Encrypt
-   - Настройте редирект с HTTP на HTTPS
-
-## 📊 Структура проекта
-
-```
-finance-tracker/
-├── backend/
-│   ├── index.js          # API сервер
-│   ├── package.json      # Зависимости backend
-│   └── Dockerfile        # Docker образ backend
-├── frontend/
-│   ├── src/
-│   │   ├── pages/        # Страницы приложения
-│   │   ├── components/   # Компоненты
-│   │   ├── api.js        # API клиент
-│   │   ├── App.jsx       # Главный компонент
-│   │   └── main.jsx      # Точка входа
-│   ├── package.json      # Зависимости frontend
-│   ├── nginx.conf        # Конфигурация Nginx
-│   └── Dockerfile        # Docker образ frontend
-├── docker-compose.yml    # Оркестрация контейнеров
-├── .env.example          # Пример переменных окружения
-└── README.md             # Этот файл
-```
-
-## 🐛 Решение проблем
-
-### Порт 80 уже занят
-
-Измените порт в `docker-compose.yml`:
-```yaml
-ports:
-  - "8080:80"  # Измените 8080 на нужный порт
-```
-
-### Backend не запускается
-
-Проверьте логи:
-```bash
-docker compose logs backend
-```
-
-### Frontend не подключается к backend
-
-Проверьте, что backend запущен:
-```bash
-docker compose ps
-```
-
-### Ошибка "Permission denied"
-
-Добавьте пользователя в группу docker:
-```bash
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-## 📝 API Endpoints
-
-### Аутентификация
-- `POST /api/auth/register` - Регистрация
-- `POST /api/auth/login` - Вход
-- `GET /api/auth/me` - Текущий пользователь
-
-### Счета
-- `GET /api/accounts` - Список счетов
-- `POST /api/accounts` - Создать счёт
-- `PUT /api/accounts/:id` - Обновить счёт
-- `DELETE /api/accounts/:id` - Удалить счёт
-
-### Категории
-- `GET /api/categories` - Список категорий
-- `POST /api/categories` - Создать категорию
-- `PUT /api/categories/:id` - Обновить категорию
-- `DELETE /api/categories/:id` - Удалить категорию
-
-### Транзакции
-- `GET /api/transactions` - Список транзакций
-- `POST /api/transactions` - Создать транзакцию
-- `PUT /api/transactions/:id` - Обновить транзакцию
-- `DELETE /api/transactions/:id` - Удалить транзакцию
-
-### Сводка
-- `GET /api/summary?period=month` - Сводка (week/month/year)
-
-## 📄 Лицензия
-
-MIT
-
-## 🤝 Поддержка
-
-При возникновении проблем:
-1. Проверьте логи: `docker compose logs`
-2. Убедитесь, что все контейнеры запущены: `docker compose ps`
-3. Проверьте, что порты не заняты: `sudo netstat -tulpn | grep :80`
+## Ключевые URL
+- UI: https://<DOMAIN>/ ; логин /login; регистрация /register
+- Демо-вход без пароля: кнопка «Войти в демо-семью» на /login
+- Панель супер-админа: /superadmin/login (admin / 1968)
+- OpenAPI: /api/docs
+
+## Бэкапы / логи / обновление
+- ./backup.sh — pg_dump + tar volume чеков в ./backups (добавьте в cron)
+- Логи backend: docker volume backend_logs (/logs/backend.log, loguru JSON)
+- Обновление: git pull && docker compose up -d --build && docker compose exec backend alembic upgrade head
+
+Подробности: docs/README-DEPLOY.md (этап 10).
