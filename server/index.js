@@ -187,26 +187,48 @@ if (!superAdmin) {
 // Создание демо-данных
 const demoUser = db.prepare('SELECT id FROM users WHERE login = ?').get('demo');
 if (!demoUser) {
+  // Создаем пользователей
   const hash = bcrypt.hashSync('demo', 10);
   db.prepare(`INSERT INTO users (id, login, password, name, email, role) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run('demo-user-001', 'demo', hash, 'Демо Пользователь', 'demo@example.com', 'FAMILY_ADMIN');
+    .run('demo-user-001', 'demo', hash, 'Иван Петров', 'demo@example.com', 'FAMILY_ADMIN');
+  db.prepare(`INSERT INTO users (id, login, password, name, email, role) VALUES (?, ?, ?, ?, ?, ?)`)
+    .run('demo-user-002', 'wife', bcrypt.hashSync('wife123', 10), 'Мария Петрова', 'wife@example.com', 'USER');
+  db.prepare(`INSERT INTO users (id, login, password, name, email, role) VALUES (?, ?, ?, ?, ?, ?)`)
+    .run('demo-user-003', 'son', bcrypt.hashSync('son123', 10), 'Алексей Петров', 'son@example.com', 'USER');
   
+  // Создаем семью
   db.prepare(`INSERT INTO families (id, name, owner_id) VALUES (?, ?, ?)`)
-    .run('demo-family-001', 'Демо Семья', 'demo-user-001');
+    .run('demo-family-001', 'Семья Петровых', 'demo-user-001');
   
+  // Добавляем членов семьи
   db.prepare(`INSERT INTO family_members (family_id, user_id, role) VALUES (?, ?, ?)`)
     .run('demo-family-001', 'demo-user-001', 'FAMILY_ADMIN');
+  db.prepare(`INSERT INTO family_members (family_id, user_id, role) VALUES (?, ?, ?)`)
+    .run('demo-family-001', 'demo-user-002', 'USER');
+  db.prepare(`INSERT INTO family_members (family_id, user_id, role) VALUES (?, ?, ?)`)
+    .run('demo-family-001', 'demo-user-003', 'USER');
 
+  // Отображаемые данные членов семьи
   db.prepare(`INSERT INTO family_members_display (id, family_id, user_id, name, email, role, avatar, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run('fmd-demo-001', 'demo-family-001', 'demo-user-001', 'Демо Пользователь', 'demo@example.com', 'FAMILY_ADMIN', '👨', '#3b82f6');
-
-  // Демо счета
+    .run('fmd-demo-001', 'demo-family-001', 'demo-user-001', 'Иван Петров', 'demo@example.com', 'FAMILY_ADMIN', '👨', '#3b82f6');
+  db.prepare(`INSERT INTO family_members_display (id, family_id, user_id, name, email, role, avatar, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run('fmd-demo-002', 'demo-family-001', 'demo-user-002', 'Мария Петрова', 'wife@example.com', 'USER', '👩', '#ec4899');
+  db.prepare(`INSERT INTO family_members_display (id, family_id, user_id, name, email, role, avatar, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run('fmd-demo-003', 'demo-family-001', 'demo-user-003', 'Алексей Петров', 'son@example.com', 'USER', '👦', '#f59e0b');
+  
+  // Демо счета (5 счетов)
   db.prepare(`INSERT INTO accounts (id, family_id, name, type, currency, balance, is_shared) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run('acc-demo-001', 'demo-family-001', 'Наличные', 'CASH', 'RUB', 15000, 1);
+    .run('acc-demo-001', 'demo-family-001', 'Наличные', 'CASH', 'RUB', 25000, 1);
   db.prepare(`INSERT INTO accounts (id, family_id, name, type, currency, balance, is_shared) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run('acc-demo-002', 'demo-family-001', 'Основная карта', 'DEBIT', 'RUB', 85000, 1);
-
-  // Демо категории
+    .run('acc-demo-002', 'demo-family-001', 'Основная карта', 'DEBIT', 'RUB', 185000, 1);
+  db.prepare(`INSERT INTO accounts (id, family_id, name, type, currency, balance, is_shared) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run('acc-demo-003', 'demo-family-001', 'Накопительный счет', 'SAVINGS', 'RUB', 500000, 1);
+  db.prepare(`INSERT INTO accounts (id, family_id, name, type, currency, balance, is_shared) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run('acc-demo-004', 'demo-family-001', 'Кредитная карта', 'CREDIT', 'RUB', -45000, 1);
+  db.prepare(`INSERT INTO accounts (id, family_id, name, type, currency, balance, is_shared) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run('acc-demo-005', 'demo-family-001', 'Валютный счет', 'DEBIT', 'USD', 2500, 1);
+  
+  // Демо категории (15 категорий)
   const demoCategories = [
     ['cat-demo-001', 'Продукты', 'EXPENSE', '#22c55e', '🛒'],
     ['cat-demo-002', 'Транспорт', 'EXPENSE', '#f59e0b', '🚗'],
@@ -214,93 +236,180 @@ if (!demoUser) {
     ['cat-demo-004', 'Зарплата', 'INCOME', '#22c55e', '💼'],
     ['cat-demo-005', 'Коммунальные', 'EXPENSE', '#ef4444', '🏠'],
     ['cat-demo-006', 'Здоровье', 'EXPENSE', '#ec4899', '💊'],
+    ['cat-demo-007', 'Одежда', 'EXPENSE', '#06b6d4', '👕'],
+    ['cat-demo-008', 'Рестораны', 'EXPENSE', '#f97316', '🍽️'],
+    ['cat-demo-009', 'Образование', 'EXPENSE', '#6366f1', '📚'],
+    ['cat-demo-010', 'Подарки', 'EXPENSE', '#d946ef', '🎁'],
+    ['cat-demo-011', 'Фриланс', 'INCOME', '#14b8a6', '💻'],
+    ['cat-demo-012', 'Инвестиции', 'INCOME', '#84cc16', '📈'],
+    ['cat-demo-013', 'Спорт', 'EXPENSE', '#0ea5e9', '⚽'],
+    ['cat-demo-014', 'Путешествия', 'EXPENSE', '#f43f5e', '✈️'],
+    ['cat-demo-015', 'Связь и интернет', 'EXPENSE', '#a855f7', '📱'],
   ];
   demoCategories.forEach(([id, name, type, color, icon]) => {
     db.prepare(`INSERT INTO categories (id, family_id, name, type, color, icon) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(id, 'demo-family-001', name, type, color, icon);
   });
-
-  // Демо транзакции
+  
+  // Демо транзакции (150 транзакций за 3 месяца)
   const now = new Date();
   const transactionIds = [];
-  for (let i = 0; i < 20; i++) {
+  const stores = ['Пятёрочка', 'Магнит', 'Перекрёсток', 'Ашан', 'Лента', 'ВкусВилл', 'Дикси', 'Метро', 'O\'Кей', 'Спар'];
+  const products = ['Молоко', 'Хлеб', 'Яблоки', 'Сыр', 'Мясо', 'Рис', 'Макароны', 'Кофе', 'Чай', 'Сахар', 'Масло', 'Яйца', 'Колбаса', 'Творог', 'Кефир'];
+  const users = ['demo-user-001', 'demo-user-002', 'demo-user-003'];
+  
+  for (let i = 0; i < 150; i++) {
     const d = new Date(now);
-    d.setDate(d.getDate() - Math.floor(Math.random() * 30));
-    const isIncome = Math.random() > 0.7;
+    d.setDate(d.getDate() - Math.floor(Math.random() * 90)); // 3 месяца
+    const isIncome = Math.random() > 0.75;
     const txId = uuidv4();
     transactionIds.push(txId);
+    
+    let amount, categoryId;
+    if (isIncome) {
+      // Доходы
+      const incomeType = Math.random();
+      if (incomeType < 0.7) {
+        categoryId = 'cat-demo-004'; // Зарплата
+        amount = Math.floor(Math.random() * 30000) + 70000;
+      } else if (incomeType < 0.9) {
+        categoryId = 'cat-demo-011'; // Фриланс
+        amount = Math.floor(Math.random() * 20000) + 5000;
+      } else {
+        categoryId = 'cat-demo-012'; // Инвестиции
+        amount = Math.floor(Math.random() * 15000) + 2000;
+      }
+    } else {
+      // Расходы
+      const expenseCategories = ['cat-demo-001', 'cat-demo-002', 'cat-demo-003', 'cat-demo-005', 'cat-demo-006', 'cat-demo-007', 'cat-demo-008', 'cat-demo-009', 'cat-demo-010', 'cat-demo-013', 'cat-demo-014', 'cat-demo-015'];
+      categoryId = expenseCategories[Math.floor(Math.random() * expenseCategories.length)];
+      
+      // Разные суммы для разных категорий
+      if (categoryId === 'cat-demo-001') amount = Math.floor(Math.random() * 3000) + 500; // Продукты
+      else if (categoryId === 'cat-demo-002') amount = Math.floor(Math.random() * 2000) + 100; // Транспорт
+      else if (categoryId === 'cat-demo-003') amount = Math.floor(Math.random() * 3000) + 500; // Развлечения
+      else if (categoryId === 'cat-demo-005') amount = Math.floor(Math.random() * 5000) + 3000; // Коммунальные
+      else if (categoryId === 'cat-demo-006') amount = Math.floor(Math.random() * 5000) + 500; // Здоровье
+      else if (categoryId === 'cat-demo-007') amount = Math.floor(Math.random() * 8000) + 1000; // Одежда
+      else if (categoryId === 'cat-demo-008') amount = Math.floor(Math.random() * 3000) + 800; // Рестораны
+      else if (categoryId === 'cat-demo-009') amount = Math.floor(Math.random() * 10000) + 2000; // Образование
+      else if (categoryId === 'cat-demo-010') amount = Math.floor(Math.random() * 5000) + 1000; // Подарки
+      else if (categoryId === 'cat-demo-013') amount = Math.floor(Math.random() * 3000) + 500; // Спорт
+      else if (categoryId === 'cat-demo-014') amount = Math.floor(Math.random() * 30000) + 10000; // Путешествия
+      else amount = Math.floor(Math.random() * 2000) + 300; // Связь
+    }
+    
+    const accountId = Math.random() > 0.3 ? 'acc-demo-002' : (Math.random() > 0.5 ? 'acc-demo-001' : 'acc-demo-004');
+    const paymentMethod = accountId === 'acc-demo-001' ? 'CASH' : 'CASHLESS';
+    const hasReceipt = !isIncome && Math.random() > 0.4;
+    const userId = users[Math.floor(Math.random() * users.length)];
+    
     db.prepare(`INSERT INTO transactions (id, family_id, type, amount, currency, date, category_id, account_id, payment_method, note, has_receipt, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
         txId,
         'demo-family-001',
         isIncome ? 'INCOME' : 'EXPENSE',
-        Math.floor(Math.random() * 5000) + 100,
+        amount,
         'RUB',
         d.toISOString(),
-        isIncome ? 'cat-demo-004' : demoCategories[Math.floor(Math.random() * 3) + (Math.random() > 0.5 ? 0 : 1)][0],
-        Math.random() > 0.5 ? 'acc-demo-001' : 'acc-demo-002',
-        Math.random() > 0.5 ? 'CASH' : 'CASHLESS',
+        categoryId,
+        accountId,
+        paymentMethod,
         '',
-        Math.random() > 0.5 ? 1 : 0,
-        'demo-user-001'
+        hasReceipt ? 1 : 0,
+        userId
       );
   }
   
-  // Демо чеки (для 10 транзакций)
-  for (let i = 0; i < 10; i++) {
+  // Демо чеки (80 чеков)
+  let receiptCount = 0;
+  for (let i = 0; i < transactionIds.length && receiptCount < 80; i++) {
     const txId = transactionIds[i];
     const tx = db.prepare('SELECT * FROM transactions WHERE id = ?').get(txId);
-    if (tx) {
+    if (tx && tx.has_receipt) {
       const receiptId = uuidv4();
+      const store = stores[Math.floor(Math.random() * stores.length)];
       db.prepare(`INSERT INTO receipts (id, transaction_id, family_id, receipt_number, store_name, receipt_date, total_amount, file_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(
           receiptId,
           txId,
           'demo-family-001',
-          `Чек №${10000 + i}`,
-          ['Пятёрочка', 'Магнит', 'Перекрёсток', 'Ашан', 'Лента'][Math.floor(Math.random() * 5)],
+          `Чек №${10000 + receiptCount}`,
+          store,
           tx.date,
           tx.amount,
           null
         );
       
-      // Демо позиции чека
-      const itemCount = Math.floor(Math.random() * 3) + 1;
+      // Демо позиции чека (от 2 до 8 позиций)
+      const itemCount = Math.floor(Math.random() * 7) + 2;
+      let remainingAmount = tx.amount;
+      
       for (let j = 0; j < itemCount; j++) {
-        const itemPrice = tx.amount / itemCount;
+        const isLast = j === itemCount - 1;
+        const itemPrice = isLast ? remainingAmount : (remainingAmount / (itemCount - j)) * (0.5 + Math.random());
+        const quantity = Math.floor(Math.random() * 3) + 1;
+        const pricePerUnit = itemPrice / quantity;
+        
         db.prepare(`INSERT INTO receipt_items (id, receipt_id, name, quantity, price, total) VALUES (?, ?, ?, ?, ?, ?)`)
           .run(
             uuidv4(),
             receiptId,
-            ['Молоко', 'Хлеб', 'Яблоки', 'Сыр', 'Мясо'][j % 5],
-            1,
-            itemPrice,
-            itemPrice
+            products[Math.floor(Math.random() * products.length)],
+            quantity,
+            Math.round(pricePerUnit * 100) / 100,
+            Math.round(itemPrice * 100) / 100
           );
+        
+        remainingAmount -= itemPrice;
       }
+      
+      receiptCount++;
     }
   }
   
-  // Демо бюджеты
+  // Демо бюджеты (10 бюджетов)
   const currentMonth = new Date().toISOString().slice(0, 7);
-  db.prepare(`INSERT INTO budgets (id, family_id, name, category_id, amount, currency, period, scope, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(uuidv4(), 'demo-family-001', 'Продукты', 'cat-demo-001', 15000, 'RUB', 'monthly', 'family', `${currentMonth}-01`, `${currentMonth}-31`);
-  db.prepare(`INSERT INTO budgets (id, family_id, name, category_id, amount, currency, period, scope, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(uuidv4(), 'demo-family-001', 'Транспорт', 'cat-demo-002', 5000, 'RUB', 'monthly', 'family', `${currentMonth}-01`, `${currentMonth}-31`);
-  db.prepare(`INSERT INTO budgets (id, family_id, name, category_id, amount, currency, period, scope, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(uuidv4(), 'demo-family-001', 'Развлечения', 'cat-demo-003', 3000, 'RUB', 'monthly', 'family', `${currentMonth}-01`, `${currentMonth}-31`);
+  const budgets = [
+    ['Продукты', 'cat-demo-001', 25000],
+    ['Транспорт', 'cat-demo-002', 8000],
+    ['Развлечения', 'cat-demo-003', 10000],
+    ['Коммунальные', 'cat-demo-005', 12000],
+    ['Здоровье', 'cat-demo-006', 5000],
+    ['Одежда', 'cat-demo-007', 15000],
+    ['Рестораны', 'cat-demo-008', 8000],
+    ['Образование', 'cat-demo-009', 20000],
+    ['Спорт', 'cat-demo-013', 5000],
+    ['Связь и интернет', 'cat-demo-015', 3000],
+  ];
   
-  // Демо регулярные платежи
+  budgets.forEach(([name, categoryId, amount]) => {
+    db.prepare(`INSERT INTO budgets (id, family_id, name, category_id, amount, currency, period, scope, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(uuidv4(), 'demo-family-001', name, categoryId, amount, 'RUB', 'monthly', 'family', `${currentMonth}-01`, `${currentMonth}-31`);
+  });
+  
+  // Демо регулярные платежи (10 платежей)
   const nextMonth = new Date();
   nextMonth.setMonth(nextMonth.getMonth() + 1);
-  db.prepare(`INSERT INTO recurring_rules (id, family_id, name, type, amount, currency, category_id, account_id, payment_method, frequency, next_run, is_active, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(uuidv4(), 'demo-family-001', 'Зарплата', 'INCOME', 80000, 'RUB', 'cat-demo-004', 'acc-demo-002', 'CASHLESS', 'monthly', nextMonth.toISOString(), 1, 'demo-user-001');
-  db.prepare(`INSERT INTO recurring_rules (id, family_id, name, type, amount, currency, category_id, account_id, payment_method, frequency, next_run, is_active, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(uuidv4(), 'demo-family-001', 'Коммунальные услуги', 'EXPENSE', 5000, 'RUB', 'cat-demo-005', 'acc-demo-002', 'CASHLESS', 'monthly', nextMonth.toISOString(), 1, 'demo-user-001');
-  db.prepare(`INSERT INTO recurring_rules (id, family_id, name, type, amount, currency, category_id, account_id, payment_method, frequency, next_run, is_active, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(uuidv4(), 'demo-family-001', 'Интернет и связь', 'EXPENSE', 1500, 'RUB', 'cat-demo-005', 'acc-demo-002', 'CASHLESS', 'monthly', nextMonth.toISOString(), 1, 'demo-user-001');
+  
+  const recurringPayments = [
+    ['Зарплата основная', 'INCOME', 85000, 'cat-demo-004', 'acc-demo-002', 'monthly'],
+    ['Зарплата дополнительная', 'INCOME', 25000, 'cat-demo-004', 'acc-demo-002', 'monthly'],
+    ['Фриланс проекты', 'INCOME', 15000, 'cat-demo-011', 'acc-demo-002', 'monthly'],
+    ['Коммунальные услуги', 'EXPENSE', 8000, 'cat-demo-005', 'acc-demo-002', 'monthly'],
+    ['Интернет и связь', 'EXPENSE', 2500, 'cat-demo-015', 'acc-demo-002', 'monthly'],
+    ['Аренда квартиры', 'EXPENSE', 35000, 'cat-demo-005', 'acc-demo-002', 'monthly'],
+    ['Подписка Netflix', 'EXPENSE', 999, 'cat-demo-003', 'acc-demo-002', 'monthly'],
+    ['Подписка Spotify', 'EXPENSE', 299, 'cat-demo-003', 'acc-demo-002', 'monthly'],
+    ['Фитнес клуб', 'EXPENSE', 3500, 'cat-demo-013', 'acc-demo-002', 'monthly'],
+    ['Кредитный платеж', 'EXPENSE', 15000, 'cat-demo-005', 'acc-demo-004', 'monthly'],
+  ];
+  
+  recurringPayments.forEach(([name, type, amount, categoryId, accountId, frequency]) => {
+    db.prepare(`INSERT INTO recurring_rules (id, family_id, name, type, amount, currency, category_id, account_id, payment_method, frequency, next_run, is_active, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(uuidv4(), 'demo-family-001', name, type, amount, 'RUB', categoryId, accountId, 'CASHLESS', frequency, nextMonth.toISOString(), 1, 'demo-user-001');
+  });
 }
-
 // ==========================================
 // AUTH MIDDLEWARE
 // ==========================================
