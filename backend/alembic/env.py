@@ -1,4 +1,7 @@
-"""Alembic env: асинхронный движок, URL из настроек приложения."""
+"""Alembic env: асинхронный движок, URL из настроек приложения.
+
+Для разработки/тестов без Docker поддерживается SQLite (DATABASE_URL=sqlite+aiosqlite:///...).
+"""
 import asyncio
 from logging.config import fileConfig
 
@@ -8,7 +11,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
-from app.db.base import Base  # noqa: F401  (реестр моделей появится на этапе 2)
+from app.db.base import Base
+import app.models  # noqa: F401  — регистрация всех моделей для autogenerate
 
 config = context.config
 if config.config_file_name is not None:
@@ -18,19 +22,28 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 target_metadata = Base.metadata
 
 
+def _common_opts() -> dict:
+    url = settings.database_url
+    opts: dict = {"target_metadata": target_metadata}
+    if url.startswith("sqlite"):
+        # SQLite не умеет ALTER на ограничениях — миграции пишем batch-стилем
+        opts["render_as_batch"] = True
+    return opts
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.database_url,
-        target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        **_common_opts(),
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(connection=connection, **_common_opts())
     with context.begin_transaction():
         context.run_migrations()
 
