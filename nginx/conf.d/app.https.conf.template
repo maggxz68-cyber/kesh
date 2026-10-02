@@ -1,0 +1,31 @@
+# HTTPS: основной server-блок. Сертификаты выпускает certbot (deploy.sh, этап 10)
+# в volume nginx_certs (/etc/letsencrypt/live/$DOMAIN/fullchain.pem).
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name _;
+
+    ssl_certificate     /etc/letsencrypt/live/CHANGE_ME/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/CHANGE_ME/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options DENY;
+    add_header Referrer-Policy strict-origin-when-cross-origin;
+
+    # API → backend
+    location /api/ {
+        limit_req zone=auth burst=20 nodelay;
+        proxy_pass http://ff_backend;
+        proxy_read_timeout 120s;   # OCR/парсинг чеков может быть долгим
+    }
+
+    # Логи и статика фронта → frontend-контейнер
+    location / {
+        proxy_pass http://ff_frontend;
+    }
+}

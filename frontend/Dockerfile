@@ -1,23 +1,36 @@
-# Build stage
+# syntax=docker/dockerfile:1.7
+# ============================== build (node) ==============================
 FROM node:20-alpine AS build
+
+ARG VITE_API_BASE=/api
+ENV VITE_API_BASE=${VITE_API_BASE}
 
 WORKDIR /app
 
-COPY package*.json ./
+# Кэш зависимостей
+COPY package.json package-lock.json* ./
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-RUN npm install
+COPY tsconfig*.json vite.config.ts index.html ./
+COPY public ./public
+COPY src ./src
 
-COPY . .
+RUN npm run build   # tsc -b && vite build → /app/dist
 
-RUN npm run build
+# ============================== serve (nginx) ==============================
+FROM nginx:1.27-alpine AS serve
 
-# Production stage
-FROM nginx:alpine
+LABEL org.opencontainers.image.title="family-finance-frontend"
+
+RUN rm /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/ff-frontend.conf
 
 COPY --from=build /app/dist /usr/share/nginx/html
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
 EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1/healthz || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
