@@ -41,11 +41,16 @@ def mark_accounts_dirty(session, account_ids) -> None:
 async def recalc_account_balance(session: AsyncSession, account_id: _uuid.UUID | None) -> None:
     """Пересчёт баланса одного счёта по всем живым проводкам.
 
-    UPDATE идёт через Core (synchronize_session=False), затем ORM-объект
-    принудительно refresh()ится — иначе identity map может вернуть старое значение.
+    UPDATE идёт через Core (synchronize_session=False), затем свежее значение
+    устанавливается в ORM-объект через set_committed_value — это помечает
+    атрибут loaded/чистым без дополнительного SELECT и без риска, что объект
+    станет dirty (иначе последующий autoflush при ленивой загрузке связей
+    утащил бы UPDATE в чужой greenlet → MissingGreenlet).
     """
     if account_id is None:
         return
+    from sqlalchemy.orm.attributes import set_committed_value
+
     from app.models.reference import Account
     from app.models.transaction import Transaction
 
@@ -85,7 +90,7 @@ async def recalc_account_balance(session: AsyncSession, account_id: _uuid.UUID |
         .values(balance=new_balance)
         .execution_options(synchronize_session=False)
     )
-    await session.refresh(acc)
+    set_committed_value(acc, "balance", new_balance)
 
 
 async def apply_pending_balance_recalc(session: AsyncSession) -> None:

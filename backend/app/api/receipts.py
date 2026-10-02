@@ -28,14 +28,20 @@ from app.schemas.reports import ReceiptOut, ReceiptParseResult, ReceiptUpdate
 from app.services import fns, ocr
 
 async def _refresh_noload(db, obj):
-    """Обновить scalar-поля объекта, не триггеря lazy-load relationships (async-safe)."""
+    """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations)."""
     from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy.orm import load_only
+    from sqlalchemy import select
+    from sqlalchemy.orm.attributes import set_committed_value
 
-    mp = type(obj).mapper
-    cols = [c for c in mp.columns if c is not None]
-    attrs = [mp.attrs[c.key] for c in cols if c.key in mp.attrs]
-    await db.refresh(obj, load_options=[load_only(*attrs)])
+    mp = sa_inspect(type(obj)).mapper
+    table = mp.local_table
+    pk_names = [pk.name for pk in mp.primary_key]
+    stmt = select(table).where(*[table.c[n] == getattr(obj, n) for n in pk_names])
+    res = await db.execute(stmt)
+    row = res.mappings().one()
+    for col in table.columns:
+        if col.key in mp.attrs:
+            set_committed_value(obj, col.key, row[col.key])
 
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
