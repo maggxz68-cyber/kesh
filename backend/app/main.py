@@ -19,6 +19,7 @@ from app.api import (
     receipts,
     reports,
     superadmin_auth,
+    superadmin,
     transactions,
 )
 from app.core.config import settings
@@ -60,6 +61,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(superadmin_auth.router, prefix="/api/superadmin", tags=["superadmin-auth"])
+app.include_router(superadmin.router, prefix="/api/superadmin", tags=["superadmin"])
 # Этап 4: CRUD (счета, категории, транзакции, переводы)
 app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
 app.include_router(categories.router, prefix="/api/categories", tags=["categories"])
