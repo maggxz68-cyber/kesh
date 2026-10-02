@@ -1,31 +1,44 @@
-"""Family Finance Tracker — backend entrypoint (этап 1: пустые сервисы, проверка запуска)."""
+"""Family Finance Tracker — backend entrypoint."""
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from starlette.requests import Request
 
+from app.api import auth, superadmin_auth
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.middleware import AccessLogMiddleware, CsrfExemptMiddleware
+from app.core.security import limiter
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info(f"Starting {settings.app_name} env={settings.app_env}")
-    # Инициализация пула БД / кэша rate-limiter будет добавлена на этапе 2+
     yield
     logger.info("Shutting down")
 
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.1.0",
+    version="0.2.0",
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
     lifespan=lifespan,
 )
 
+# Rate limiting (ТЗ 10): лимиты объявлены декораторами @limiter.limit на роутерах
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+app.add_middleware(AccessLogMiddleware)
+app.add_middleware(CsrfExemptMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -34,9 +47,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API-роутеры подключаются по мере реализации этапов 3–5:
-# from app.api import auth, superadmin, accounts, categories, transactions, receipts, budgets, reports, families, export
-# app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(superadmin_auth.router, prefix="/api/superadmin", tags=["superadmin"])
+# Роутеры этапов 4–5 подключаются здесь:
+# accounts, categories, transactions, transfers, receipts, budgets, reports, families, export, superadmin
 
 
 @app.get("/api/health", tags=["system"])
