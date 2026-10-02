@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.requests import Request
 
-from app.api import auth, superadmin_auth
+from app.api import accounts, auth, categories, superadmin_auth, transactions
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.middleware import AccessLogMiddleware, CsrfExemptMiddleware
@@ -48,9 +48,14 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(superadmin_auth.router, prefix="/api/superadmin", tags=["superadmin"])
-# Роутеры этапов 4–5 подключаются здесь:
-# accounts, categories, transactions, transfers, receipts, budgets, reports, families, export, superadmin
+app.include_router(superadmin_auth.router, prefix="/api/superadmin", tags=["superadmin-auth"])
+# Этап 4: CRUD (счета, категории, транзакции, переводы)
+app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
+app.include_router(categories.router, prefix="/api/categories", tags=["categories"])
+app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
+app.include_router(transactions.transfer_router, prefix="/api/transfers", tags=["transfers"])
+# Остальные роутеры этапов 4–5 подключаются по мере готовности:
+# receipts, budgets, reports, families, export, superadmin
 
 
 @app.get("/api/health", tags=["system"])

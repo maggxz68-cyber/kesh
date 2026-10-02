@@ -116,8 +116,13 @@ async def create_demo_sandbox(session: AsyncSession) -> tuple[Family, User]:
     бюджеты, теги); файлы изображений чеков не дублируются (read-only по пути).
     Если эталонной демо-семьи ещё нет (не засиджена) — создаётся пустая семья-шаблон.
     """
+    # эталонная демо-семья: is_demo=True и НЕ sandbox (иначе копировали бы песочницу)
     demo = (
-        await session.execute(select(Family).where(Family.is_demo.is_(True), Family.deleted_at.is_(None)))
+        await session.execute(
+            select(Family).where(
+                Family.is_demo.is_(True), Family.is_sandbox.is_(False), Family.deleted_at.is_(None)
+            )
+        )
     ).scalars().first()
 
     sandbox = Family(
