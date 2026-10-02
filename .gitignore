@@ -1,26 +1,2 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Node
-node_modules/
-dist/
-dev-dist/
-.vite/
-
-# Secrets & data
-.env
-.env.production
-backups/
-logs/
-data/
-
-# IDE/OS
-.idea/
-.vscode/
-.DS_Store
+# Logs
+*.log
