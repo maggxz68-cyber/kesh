@@ -90,7 +90,9 @@ async def summary(db: AsyncSession, family_id: uuid.UUID, dt_from: datetime, dt_
 
     return {
         "income": income,
+        "income_total": income,
         "expense": expense,
+        "expense_total": expense,
         "net": income - expense,
         "cash_income": cash_in,
         "cash_expense": cash_out,

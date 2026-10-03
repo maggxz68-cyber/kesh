@@ -1,8 +1,11 @@
 """Family Finance Tracker — backend entrypoint."""
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -80,3 +83,10 @@ app.include_router(export.router, prefix="/api/export", tags=["export"])
 async def health() -> dict[str, str]:
     """Liveness-проба для Docker HEALTHCHECK и nginx."""
     return {"status": "ok", "app": settings.app_name, "env": settings.app_env}
+
+
+# Локальная разработка без nginx: отдаём собранный фронтенд (frontend/dist),
+# если он существует. В проде статикой занимается nginx/frontend-контейнер.
+_frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if _frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
