@@ -44,7 +44,7 @@ class Account(Base, TimestampMixin, SoftDeleteMixin):
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    family: Mapped[Family] = relationship(back_populates="accounts")
+    family: Mapped[Family] = relationship(back_populates="accounts", lazy="noload")
     transactions: Mapped[list["Transaction"]] = relationship(  # noqa: F821
         back_populates="account", foreign_keys="Transaction.account_id"
     )
@@ -79,12 +79,13 @@ class Category(Base, TimestampMixin, SoftDeleteMixin):
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    family: Mapped[Family | None] = relationship(back_populates="categories")
+    # lazy="selectin" — обязательна для async-движка: сериализация не должна вызывать IO вне greenlet
+    family: Mapped[Family | None] = relationship(back_populates="categories", lazy="noload")
     children: Mapped[list["Category"]] = relationship(
-        back_populates="parent", cascade="all", foreign_keys="Category.parent_id"
+        back_populates="parent", cascade="all", foreign_keys="Category.parent_id", lazy="selectin"
     )
     parent: Mapped["Category | None"] = relationship(
-        back_populates="children", remote_side="Category.id", foreign_keys="Category.parent_id"
+        back_populates="children", remote_side="Category.id", foreign_keys="Category.parent_id", lazy="selectin"
     )
 
     __table_args__ = (
@@ -103,7 +104,7 @@ class Tag(Base, TimestampMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     color: Mapped[str | None] = mapped_column(String(16))
 
-    family: Mapped[Family] = relationship(back_populates="tags")
+    family: Mapped[Family] = relationship(back_populates="tags", lazy="noload")
 
     __table_args__ = (UniqueConstraint("family_id", "name", name="uq_tags_family_name"),)
 
@@ -123,6 +124,6 @@ class Counterparty(Base, TimestampMixin, SoftDeleteMixin):
         ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
-    family: Mapped[Family] = relationship(back_populates="counterparties")
+    family: Mapped[Family] = relationship(back_populates="counterparties", lazy="noload")
 
     __table_args__ = (UniqueConstraint("family_id", "name", name="uq_counterparties_family_name"),)

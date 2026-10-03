@@ -72,7 +72,7 @@ class Receipt(Base, TimestampMixin):
     ocr_text: Mapped[str | None] = mapped_column(Text)                   # сырой OCR-текст
     meta: Mapped[dict[str, Any] | None] = mapped_column(JSONType)        # доп. поля ФНС/OCR
 
-    family: Mapped[Family] = relationship(back_populates="receipts")
+    family: Mapped[Family] = relationship(back_populates="receipts", lazy="noload")
     items: Mapped[list["ReceiptItem"]] = relationship(
         back_populates="receipt", cascade="all, delete-orphan", lazy="selectin"
     )
@@ -106,7 +106,7 @@ class ReceiptItem(Base, TimestampMixin):
     total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
     vat_rate: Mapped[str | None] = mapped_column(String(16))
 
-    receipt: Mapped[Receipt] = relationship(back_populates="items")
+    receipt: Mapped[Receipt] = relationship(back_populates="items", lazy="noload")
 
 
 class ReceiptTransaction(Base, TimestampMixin):
@@ -121,8 +121,8 @@ class ReceiptTransaction(Base, TimestampMixin):
         ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True
     )
 
-    receipt: Mapped[Receipt] = relationship(back_populates="transaction_links")
-    transaction: Mapped["Transaction"] = relationship(back_populates="receipt_links")  # noqa: F821
+    receipt: Mapped[Receipt] = relationship(back_populates="transaction_links", lazy="noload")
+    transaction: Mapped["Transaction"] = relationship(back_populates="receipt_links", lazy="noload")  # noqa: F821
 
 
 class AuditLog(Base, TimestampMixin):

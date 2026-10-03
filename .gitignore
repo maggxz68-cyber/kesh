@@ -2,8 +2,7 @@
 __pycache__/
 *.pyc
 
-# Logs and temp files
-*.log
-
-# Database files (common in development/testing)
-*.db
+# Environment and secrets
+.env
+.env.local
+.env.*.local
