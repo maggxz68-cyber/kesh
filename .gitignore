@@ -1,3 +1,5 @@
-# Python compiled files
-__pycache__/
-*.pyc
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
