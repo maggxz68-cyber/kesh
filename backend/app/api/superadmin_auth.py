@@ -26,7 +26,7 @@ async def superadmin_login(body: SuperadminLoginRequest, request: Request, respo
     await write_audit(db, action=AuditAction.LOGIN, actor_id=str(sa.id), actor_type="superadmin",
                       actor_label=sa.login, ip=request.client.host if request.client else None,
                       user_agent=request.headers.get("user-agent"), details={"scope": "superadmin"})
-    pair = issue_tokens(user_id=None, family_id=None, is_superadmin=True)
+    pair = issue_tokens(user_id=sa.id, family_id=None, is_superadmin=True)
     _set_session_cookies(response, pair)
     return AuthResponse(
         user=UserOut(id=str(sa.id), email=sa.login, name="Супер-админ", role="superadmin",

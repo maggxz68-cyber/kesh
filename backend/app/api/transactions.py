@@ -30,7 +30,11 @@ from app.schemas.transactions import (
 from app.services.balances import affected_account_ids, mark_accounts_dirty
 
 async def _refresh_noload(db, obj):
-    """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations)."""
+    """Обновить scalar-поля и связи объекта после flush/expunge (async-safe).
+
+    set_committed_value для scalar-колонки с foreign key сбрасывает связь в None,
+    поэтому связи (account/category/tags/...) перезагружаем отдельным запросом.
+    """
     from sqlalchemy import inspect as sa_inspect
     from sqlalchemy import select
     from sqlalchemy.orm.attributes import set_committed_value
@@ -44,6 +48,16 @@ async def _refresh_noload(db, obj):
     for col in table.columns:
         if col.key in mp.attrs:
             set_committed_value(obj, col.key, row[col.key])
+    # Принудительная async-перезагрузка связей (lazy="selectin" на модели)
+    rel_keys = [rel.key for rel in mp.relationships]
+    if rel_keys:
+        reloaded = (
+            await db.execute(
+                select(type(obj)).where(*[getattr(type(obj), n) == getattr(obj, n) for n in pk_names])
+            )
+        ).scalar_one()
+        for key in rel_keys:
+            set_committed_value(obj, key, getattr(reloaded, key))
 
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
