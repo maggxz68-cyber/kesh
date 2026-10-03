@@ -89,4 +89,19 @@ async def health() -> dict[str, str]:
 # если он существует. В проде статикой занимается nginx/frontend-контейнер.
 _frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if _frontend_dist.is_dir():
-    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+    # SPA с клиентским роутингом (react-router BrowserRouter): любой неизвестный
+    # путь должен возвращать index.html, иначе прямые заходы на /login,
+    # /superadmin/login и т.п. дают 404 от сервера.
+    _static = StaticFiles(directory=str(_frontend_dist))
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(request: Request, full_path: str):
+        # Не перехватываем /api/* — несуществующий API-путь остаётся 404 JSON.
+        if full_path.startswith("api/"):
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidate = (_frontend_dist / full_path).resolve()
+        if full_path and candidate.is_file() and candidate.is_relative_to(_frontend_dist.resolve()):
+            return await _static.get_response(full_path, request.scope)
+        return await _static.get_response("index.html", request.scope)
