@@ -10,6 +10,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import AccountType, BudgetPeriod, CategoryKind
@@ -60,25 +61,60 @@ BUDGET_TEMPLATE_CATEGORIES = [
 ]
 
 
+async def ensure_global_system_categories(session: AsyncSession) -> dict[tuple[str, str], Category]:
+    """Глобальный системный справочник категорий (family_id IS NULL, ТЗ 4.1/6.3).
+
+    Идемпотентно создаёт отсутствующие позиции; вызывается при регистрации семьи
+    и в seed. Управляется супер-админом через /api/superadmin/system-categories.
+    """
+    existing = {
+        (c.name, c.kind): c
+        for c in (
+            await session.execute(
+                select(Category).where(Category.is_system.is_(True), Category.family_id.is_(None))
+            )
+        ).scalars().all()
+    }
+    by_key: dict[tuple[str, str], Category] = dict(existing)
+    # Сначала без родителей, затем с родителями (порядок шаблона это гарантирует)
+    for pass_no in (0, 1):
+        for name, kind, icon, color, parent in CATEGORY_TEMPLATE:
+            if bool(parent) != bool(pass_no):
+                continue
+            if (name, kind) in by_key:
+                continue
+            cat = Category(
+                family_id=None,
+                is_system=True,
+                name=name,
+                kind=CategoryKind(kind),
+                icon=icon,
+                color=color,
+                parent_id=by_key[(parent, kind)].id if parent else None,
+            )
+            session.add(cat)
+            await session.flush()
+            by_key[(name, kind)] = cat
+    return by_key
+
+
 async def populate_family_reference(
     session: AsyncSession, family_id: _uuid.UUID, *, currency: str = "RUB"
 ) -> None:
-    """Заполняет справочники семьи шаблоном. Вызывается из сервисов register/demo-copy."""
-    by_name: dict[tuple[str, str], Category] = {}
+    """Заполняет справочники семьи шаблоном. Вызывается из сервисов register/demo-copy.
 
-    for name, kind, icon, color, parent in CATEGORY_TEMPLATE:
-        cat = Category(
-            family_id=family_id,
-            is_system=False,
-            name=name,
-            kind=CategoryKind(kind),
-            icon=icon,
-            color=color,
-            parent_id=by_name[(parent, kind)].id if parent else None,
-        )
-        session.add(cat)
-        await session.flush()
-        by_name[(name, kind)] = cat
+    Категории создаются как системные (глобальный шаблон, ТЗ 7.2 — «системные,
+    только чтение для семей»); у каждой семьи они общие, изоляция по транзакциям.
+    """
+    await ensure_global_system_categories(session)
+    by_name: dict[tuple[str, str], Category] = {
+        (c.name, c.kind): c
+        for c in (
+            await session.execute(
+                select(Category).where(Category.is_system.is_(True), Category.family_id.is_(None))
+            )
+        ).scalars().all()
+    }
 
     # Один пустой счёт-шаблон
     session.add(

@@ -108,35 +108,14 @@ async def _get_or_create_family(db: AsyncSession, name: str, *, is_demo: bool) -
     return fam
 
 
-async def _ensure_categories(db: AsyncSession, family_id: _uuid.UUID) -> dict[str, Category]:
-    """Создаёт категории семьи из шаблона (имена уникальны в рамках kind)."""
-    by_name: dict[tuple[str, str], Category] = {}
-    for name, kind, icon, color, parent in CATEGORY_TEMPLATE:
-        key = (name, kind)
-        cat = (
-            await db.execute(
-                select(Category).where(
-                    Category.family_id == family_id, Category.name == name, Category.kind == CategoryKind(kind)
-                )
-            )
-        ).scalar_one_or_none()
-        if cat is None:
-            cat = Category(
-                family_id=family_id, is_system=False, name=name, kind=CategoryKind(kind),
-                icon=icon, color=color, sort_order=len(by_name),
-            )
-            db.add(cat)
-            await db.flush()
-        by_name[key] = cat
-    # проставляем родителей
-    for name, kind, _i, _c, parent in CATEGORY_TEMPLATE:
-        if parent:
-            child = by_name[(name, kind)]
-            par = by_name.get((parent, kind))
-            if par and child.parent_id != par.id:
-                child.parent_id = par.id
-    await db.flush()
-    return by_name
+async def _ensure_categories(db: AsyncSession, family_id: _uuid.UUID) -> dict[tuple[str, str], Category]:
+    """Гарантирует глобальный системный справочник и возвращает {(имя, kind): категория}.
+
+    Категории — системные (family_id IS NULL), общие для всех семей (ТЗ 6.3/7.2).
+    """
+    from app.services.family_template import ensure_global_system_categories
+
+    return await ensure_global_system_categories(db)
 
 
 def _make_receipt_image(store: str, total: float) -> bytes:

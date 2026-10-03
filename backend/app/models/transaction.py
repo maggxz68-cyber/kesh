@@ -141,8 +141,8 @@ class Budget(Base, TimestampMixin, SoftDeleteMixin):
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     notify_on_overrun: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    family: Mapped[Family] = relationship(back_populates="budgets")
-    category: Mapped["Category"] = relationship(foreign_keys=[category_id])  # noqa: F821
+    family: Mapped[Family] = relationship(back_populates="budgets", lazy="noload")
+    category: Mapped["Category"] = relationship(foreign_keys=[category_id], lazy="selectin")  # noqa: F821
 
     __table_args__ = (
         UniqueConstraint("family_id", "category_id", "period", "period_start", name="uq_budget_unique"),
