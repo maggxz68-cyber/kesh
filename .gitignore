@@ -1,5 +1,9 @@
-# Dependencies
-node_modules/
+# Python compiled files
+__pycache__/
+*.pyc
 
-# Build artifacts
-dist/
+# Logs and temp files
+*.log
+
+# Database files (common in development/testing)
+*.db

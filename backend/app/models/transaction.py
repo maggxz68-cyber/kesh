@@ -90,14 +90,20 @@ class Transaction(Base, TimestampMixin, SoftDeleteMixin):
     comment: Mapped[str | None] = mapped_column(Text)
     has_receipt: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    family: Mapped[Family] = relationship(back_populates="transactions")
-    author: Mapped[User | None] = relationship()
-    account: Mapped["Account"] = relationship(back_populates="transactions", foreign_keys=[account_id])  # noqa: F821
-    target_account: Mapped["Account | None"] = relationship(foreign_keys=[target_account_id])  # noqa: F821
-    category: Mapped["Category | None"] = relationship(foreign_keys=[category_id])  # noqa: F821
+    # lazy="selectin" — обязательна для async-движка: сериализация в API не должна вызывать IO вне greenlet
+    family: Mapped[Family] = relationship(back_populates="transactions", lazy="noload")
+    author: Mapped[User | None] = relationship(lazy="selectin")
+    account: Mapped["Account"] = relationship(  # noqa: F821
+        back_populates="transactions", foreign_keys=[account_id], lazy="selectin"
+    )
+    target_account: Mapped["Account | None"] = relationship(foreign_keys=[target_account_id], lazy="selectin")  # noqa: F821
+    category: Mapped["Category | None"] = relationship(foreign_keys=[category_id], lazy="selectin")  # noqa: F821
+    counterparty: Mapped["Counterparty | None"] = relationship(  # noqa: F821
+        foreign_keys=[counterparty_id], lazy="selectin"
+    )
     tags: Mapped[list["Tag"]] = relationship(secondary=transaction_tags, lazy="selectin")  # noqa: F821
     receipt_links: Mapped[list["ReceiptTransaction"]] = relationship(
-        back_populates="transaction", cascade="all, delete-orphan"
+        back_populates="transaction", cascade="all, delete-orphan", lazy="selectin"
     )
 
     __table_args__ = (

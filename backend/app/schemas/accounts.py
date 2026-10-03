@@ -25,6 +25,16 @@ class AccountCreate(ORMBase):
         return v.upper()
 
 
+class CompatAccountCreate(AccountCreate):
+    """Совместимость с фронтендом/тестами: принимает также initial_balance как алиас opening_balance."""
+
+    initial_balance: Decimal | None = None
+
+    def model_post_init(self, _ctx) -> None:
+        if self.initial_balance is not None and self.opening_balance == 0:
+            self.opening_balance = self.initial_balance
+
+
 class AccountUpdate(ORMBase):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     type: AccountType | None = None

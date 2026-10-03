@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from app.core.deps import CurrentUser, DbDep, csrf_guard, get_current_user, parse_uuid
 from app.models.reference import Account
 from app.models.transaction import Transaction
-from app.schemas.accounts import AccountCreate, AccountOut, AccountUpdate
+from app.schemas.accounts import AccountCreate, AccountOut, AccountUpdate, CompatAccountCreate
 from app.services.balances import mark_accounts_dirty
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
@@ -37,7 +37,7 @@ async def list_accounts(
 
 
 @router.post("", response_model=AccountOut, status_code=status.HTTP_201_CREATED)
-async def create_account(body: AccountCreate, db: DbDep, current: CurrentUserDep) -> Account:
+async def create_account(body: CompatAccountCreate, db: DbDep, current: CurrentUserDep) -> Account:
     acc = Account(
         family_id=current.family_id,
         name=body.name.strip(),
