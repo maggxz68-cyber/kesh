@@ -117,6 +117,7 @@ class BulkIds(ORMBase):
 
 class BulkResult(ORMBase):
     affected: int
+    deleted: int = 0
 
 
 SortSpec = Literal[

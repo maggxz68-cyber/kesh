@@ -236,7 +236,7 @@ async def create_transaction(body: TransactionCreate, db: DbDep, current: Curren
         db.add(ReceiptTransaction(receipt_id=body.receipt_id, transaction_id=tx.id))
         await db.flush()
     mark_accounts_dirty(db, affected_account_ids(tx))
-    await _refresh_noload(db, tx)
+    await _reload(db, tx)
     return _to_out(tx)
 
 
@@ -254,7 +254,7 @@ async def bulk_delete(body: BulkIds, db: DbDep, current: CurrentUserDep) -> Bulk
         mark_accounts_dirty(db, affected_account_ids(tx))
         affected += 1
     await db.flush()
-    return BulkResult(deleted=affected)
+    return BulkResult(affected=affected, deleted=affected)
 
 
 @router.patch("/{tx_id}", response_model=dict)
@@ -282,7 +282,7 @@ async def update_transaction(tx_id: str, body: TransactionUpdate, db: DbDep, cur
             setattr(tx, k, v)
     mark_accounts_dirty(db, set(old_ids) | set(affected_account_ids(tx)))
     await db.flush()
-    await _refresh_noload(db, tx)
+    await _reload(db, tx)
     return _to_out(tx)
 
 
@@ -341,5 +341,5 @@ async def create_transfer(body: TransferCreate, db: DbDep, current: CurrentUserD
     db.add(tx)
     await db.flush()
     mark_accounts_dirty(db, affected_account_ids(tx))
-    await _refresh_noload(db, tx)
+    await _reload(db, tx)
     return _to_out(tx)

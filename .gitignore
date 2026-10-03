@@ -1,8 +1,13 @@
-# Python compiled files
+# Python
 __pycache__/
 *.pyc
 
-# Environment and secrets
-.env
-.env.local
-.env.*.local
+# Logs
+*.log
+
+# Build artifacts
+dist/
+*.tsbuildinfo
+
+# Database files
+*.db
