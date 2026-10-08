@@ -1,5 +1,5 @@
 """Реестр моделей. Импорты важны: Alembic autogenerate видит только зарегистрированные классы."""
-from app.db.base import Base  # noqa: F401
+from app.db.base import Base, install_lazy_load_fallback  # noqa: F401
 from app.models.enums import (
     AccountType,
     AuditAction,
@@ -49,3 +49,7 @@ __all__ = [
     "TimestampMixin",
     "SoftDeleteMixin",
 ]
+
+
+# Безопасный fallback для ленивой загрузки связей в async-контексте.
+install_lazy_load_fallback()

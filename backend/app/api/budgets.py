@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from app.core.deps import CurrentUser, DbDep, csrf_guard, get_current_user, parse_uuid
@@ -75,8 +75,10 @@ async def _to_out(db: DbDep, b: Budget) -> BudgetOut:
 
 
 def _cat_out(c: Category) -> dict:
-    return {"id": c.id, "name": c.name, "kind": c.kind, "color": c.color, "icon": c.icon,
-            "parent_id": c.parent_id, "is_system": c.is_system}
+    return {"id": c.id, "family_id": c.family_id, "name": c.name, "kind": c.kind,
+            "color": c.color, "icon": c.icon, "parent_id": c.parent_id,
+            "is_system": c.is_system, "sort_order": c.sort_order,
+            "is_archived": c.is_archived}
 
 
 @router.get("", response_model=list[BudgetOut])
