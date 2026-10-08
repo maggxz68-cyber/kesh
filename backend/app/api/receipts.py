@@ -184,7 +184,11 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
     await db.flush()
 
     # 1) QR-код ФНС
-    payload = await asyncio.to_thread(fns.decode_qr, abs_path)
+    try:
+        payload = await asyncio.to_thread(fns.decode_qr, abs_path)
+    except Exception as exc:  # noqa: BLE001 — pyzbar/PIL могут отсутствовать в окружении
+        logger.warning(f"QR-декодирование недоступно ({exc.__class__.__name__}: {exc}); пробуем OCR")
+        payload = None
     if payload:
         p = fns.parse_payload(payload)
         if p is not None:
@@ -225,7 +229,19 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
     if r.mime_type == "application/pdf":
         r.parse_status = ReceiptParseStatus.RAW
         return "none", None
-    parsed = await asyncio.to_thread(ocr.run_ocr, abs_path)
+    try:
+        parsed = await asyncio.to_thread(ocr.run_ocr, abs_path)
+    except Exception as exc:  # noqa: BLE001 — tesseract/cv2 могут отсутствовать в окружении
+        logger.error(
+            f"OCR недоступен ({exc.__class__.__name__}: {exc}). "
+            "Установите tesseract-ocr (+ rus lang), libopencv и pytesseract в образ backend."
+        )
+        r.parse_status = ReceiptParseStatus.FAILED
+        meta = dict(r.meta or {})
+        meta["parse_error"] = f"{exc.__class__.__name__}: {str(exc)[:300]}"
+        r.meta = meta
+        await db.flush()
+        return "none", None
     if parsed.text:
         # дата чека из OCR недоступна в OcrResult — фиксируем только распознанные поля
         await _apply_parse(db, r, parsed, ReceiptParseStatus.PARSED_OCR)

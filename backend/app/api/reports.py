@@ -21,7 +21,9 @@ async def summary(
     date_to: date | None = None,
 ) -> dict:
     dt_from, dt_to = reports.period_bounds(date_from, date_to)
-    return await reports.summary(db, current.family_id, dt_from, dt_to)
+    s = await reports.summary(db, current.family_id, dt_from, dt_to)
+    # фронт ожидает поле `balance` (общий баланс счетов) — алиас к balance_total
+    return {**s, "balance": s.get("balance_total", 0)}
 
 
 @router.get("/by-category")
@@ -31,15 +33,20 @@ async def by_category(
     date_from: date | None = None,
     date_to: date | None = None,
     kind: str | None = Query(None, pattern="^(income|expense)$"),
+    type_: str | None = Query(None, alias="type", pattern="^(income|expense)$"),
     limit: int = Query(20, ge=1, le=100),
-) -> list[dict]:
+) -> dict:
     dt_from, dt_to = reports.period_bounds(date_from, date_to)
-    return await reports.by_category(db, current.family_id, dt_from, dt_to, kind=kind, limit=limit)
+    # фронт передаёт параметр `type` вместо `kind` — поддерживаем оба
+    kind = kind or type_
+    items = await reports.by_category(db, current.family_id, dt_from, dt_to, kind=kind, limit=limit)
+    return {"items": items}
 
 
 @router.get("/by-month")
-async def by_month(db: DbDep, current: CurrentUserDep, months: int = Query(12, ge=1, le=36)) -> list[dict]:
-    return await reports.by_month(db, current.family_id, months=months)
+async def by_month(db: DbDep, current: CurrentUserDep, months: int = Query(12, ge=1, le=36)) -> dict:
+    items = await reports.by_month(db, current.family_id, months=months)
+    return {"items": items}
 
 
 @router.get("/cashflow")
@@ -48,17 +55,31 @@ async def cashflow(
     current: CurrentUserDep,
     date_from: date | None = None,
     date_to: date | None = None,
-) -> list[dict]:
+) -> dict:
     dt_from, dt_to = reports.period_bounds(date_from, date_to)
-    return await reports.cashflow(db, current.family_id, dt_from, dt_to)
+    rows = await reports.cashflow(db, current.family_id, dt_from, dt_to)
+    # фронт ожидает поле `date` (ISO) — добавляем алиас к `day`
+    items = [{**r, "date": r["day"]} for r in rows]
+    return {"items": items}
 
 
 @router.get("/by-member")
 async def by_member(
     db: DbDep, current: CurrentUserDep, date_from: date | None = None, date_to: date | None = None
-) -> list[dict]:
+) -> dict:
     dt_from, dt_to = reports.period_bounds(date_from, date_to)
-    return await reports.by_member(db, current.family_id, dt_from, dt_to)
+    rows = await reports.by_member(db, current.family_id, dt_from, dt_to)
+    # фронт ожидает `user_name` — алиас к `name`
+    items = [{**r, "user_name": r["name"]} for r in rows]
+    return {"items": items}
+
+
+# Алиас для совместимости с фронтендом (он запрашивает /reports/by-user)
+@router.get("/by-user")
+async def by_user(
+    db: DbDep, current: CurrentUserDep, date_from: date | None = None, date_to: date | None = None
+) -> dict:
+    return await by_member(db, current, date_from, date_to)
 
 
 @router.get("/budgets")

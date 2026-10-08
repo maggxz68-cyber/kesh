@@ -27,7 +27,7 @@ export default function BudgetsPage() {
     mutationFn: () =>
       api.post('/budgets', {
         category_id: form.category_id,
-        amount: Number(form.amount),
+        limit_amount: Number(form.amount),
         period: 'monthly',
         year: ym.year,
         month: ym.month,
