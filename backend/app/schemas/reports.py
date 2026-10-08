@@ -17,10 +17,24 @@ from app.schemas.common import ORMBase
 
 class BudgetCreate(ORMBase):
     category_id: uuid.UUID
-    period: BudgetPeriod
-    limit_amount: Decimal = Field(ge=0)
+    period: BudgetPeriod = BudgetPeriod.MONTHLY
+    limit_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    amount: Decimal | None = Field(default=None, ge=0, alias="limit")  # алиас для фронта
+    year: int | None = Field(default=None, ge=2000, le=2999)
+    month: int | None = Field(default=None, ge=1, le=12)
     period_start: date | None = None  # по умолчанию: начало текущего периода
     notify_on_overrun: bool = True
+
+    @property
+    def effective_limit(self) -> Decimal:
+        return self.amount if self.amount is not None else self.limit_amount
+
+    @property
+    def effective_start(self) -> date | None:
+        """year+month (из фронтенда) задают период; иначе явный period_start."""
+        if self.year and self.month:
+            return date(self.year, self.month, 1)
+        return self.period_start
 
 
 class BudgetUpdate(ORMBase):
@@ -39,6 +53,13 @@ class BudgetOut(ORMBase):
     notify_on_overrun: bool
     spent: Decimal = Decimal("0")
     over_limit: bool = False
+    # плоские поля для фронтенда (дублируют category/limit, ТЗ 7.5)
+    category_id: uuid.UUID | None = None
+    category_name: str | None = None
+    category_color: str | None = None
+    amount: Decimal = Decimal("0")  # = limit_amount (алиас для фронта)
+    year: int | None = None
+    month: int | None = None
 
 
 # ---------- Чеки ----------
