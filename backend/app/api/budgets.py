@@ -115,9 +115,9 @@ async def create_budget(body: BudgetCreate, db: DbDep, current: CurrentUserDep) 
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Категория не найдена")
     start = body.effective_start or date.today()
     p_start, p_end = _period_bounds(body.period, start)
-    dup = (
+    existing = (
         await db.execute(
-            select(Budget.id).where(
+            select(Budget).where(
                 Budget.family_id == current.family_id,
                 Budget.category_id == body.category_id,
                 Budget.period == body.period,
@@ -125,8 +125,16 @@ async def create_budget(body: BudgetCreate, db: DbDep, current: CurrentUserDep) 
                 Budget.deleted_at.is_(None),
             )
         )
-    ).scalar_one_or_none()
-    if dup:
+    ).scalars().all()
+    # Дубликат: обновляем лимит существующего бюджета вместо конфликта.
+    # Это позволяет фронту «пересоздавать» бюджет-шаблон с реальным лимитом.
+    dup = next((x for x in existing if x.limit_amount == ZERO), None)
+    if dup is not None:
+        dup.limit_amount = body.effective_limit
+        dup.notify_on_overrun = body.notify_on_overrun
+        await db.flush()
+        return await _to_out(db, dup)
+    if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Бюджет по этой категории на период уже существует")
     b = Budget(
         family_id=current.family_id,

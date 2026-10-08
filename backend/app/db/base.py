@@ -48,6 +48,19 @@ class _SafeLoaderDescriptor:
                 return fallback
             raise
 
+    def __set__(self, obj, value):
+        # Делегируем установку значения оригинальному атрибуту ORM.
+        # Без этого присваивание связей (tx.tags = [...]) падало с
+        # AttributeError: 'list' object has no attribute '_sa_adapter'.
+        self._attr.__set__(obj, value)
+
+    def __delete__(self, obj):
+        self._attr.__delete__(obj)
+
+    # Прокси атрибутов дескриптора (key, class_attribute и т.п.)
+    def __getattr__(self, name):
+        return getattr(self._attr, name)
+
 
 def install_lazy_load_fallback():
     """Оборачивает все relationship-дескрипторы безопасным fallback'ом.
