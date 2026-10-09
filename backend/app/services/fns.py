@@ -7,11 +7,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Типы фискальных документов (Приказ ФНС № ММВ-7-20/538@, tlvTag «т»):
 # приходные чеки — 1..4, возврат прихода — 11..14, расходные — 21..24, возврат расхода — 31..34.
@@ -85,8 +88,10 @@ def parse_payload(payload: str) -> FnPayload | None:
       * классический: `t=<12 hex>&s=<сумма коп.>&fn=...&fp=<10hex>&dt=<YYYYMMDD>`
       * упрощённый (современные ККТ/агрегаторы): `t=1&s=369.99&fn=...&i=...&fp=...&n=1[&dt=...]`
     """
-    if not payload or "t=" not in payload or "&" not in payload:
+    if not payload or "&" not in payload or "t=" not in payload or "s=" not in payload:
+        logger.warning(f"QR-код не похож на ФНС (нет t=&...): {payload[:100]!r} — fallback на OCR")
         return None
+    logger.info(f"Сырой QR-код ФНС: {payload[:200]}")
     kv: dict[str, str] = {}
     for chunk in payload.split("&"):
         if "=" in chunk:
