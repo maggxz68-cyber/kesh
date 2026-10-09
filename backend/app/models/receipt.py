@@ -77,7 +77,7 @@ class Receipt(Base, TimestampMixin):
         back_populates="receipt", cascade="all, delete-orphan", lazy="selectin"
     )
     transaction_links: Mapped[list["ReceiptTransaction"]] = relationship(
-        back_populates="receipt", cascade="all, delete-orphan"
+        back_populates="receipt", cascade="all, delete-orphan", lazy="selectin"
     )
 
     @property
