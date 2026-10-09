@@ -15,8 +15,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from loguru import logger
-from sqlalchemy.orm import noload
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
+from sqlalchemy.orm import noload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbDep, csrf_guard, get_current_user, parse_uuid
@@ -55,7 +57,8 @@ async def _reload_receipt_state(db, r: Receipt) -> Receipt:
         await db.execute(select(Receipt).where(Receipt.id == r.id))
     ).scalar_one_or_none()
     if fresh is None:
-        return r
+        # запись отсутствует в текущей транзакции (например, после rollback)
+        return None
     items = (
         await db.execute(select(ReceiptItem).where(ReceiptItem.receipt_id == fresh.id))
     ).scalars().all()
@@ -126,32 +129,89 @@ def _to_out(r: Receipt, include_payload: bool = False) -> ReceiptOut:
     return ReceiptOut.model_validate(data)
 
 
-async def _apply_parse(db: DbDep, r: Receipt, parsed: ocr.OcrResult, status_: ReceiptParseStatus) -> None:
-    """Сохраняет OCR-результат: реквизиты + позиции (автопересчёт суммы из позиций, ТЗ 7.4)."""
-    r.parse_status = status_
-    r.ocr_text = parsed.text[:20000] if parsed.text else r.ocr_text
-    if parsed.store_name and not r.store_name:
-        r.store_name = parsed.store_name
-    if parsed.inn and not r.inn:
-        r.inn = parsed.inn
-    # позиции (r.items — selectin-загруженное relationship, доступен в async без lazy-load)
-    existing = list(r.items)
-    if parsed.items and not existing:
-        for it in parsed.items:
+async def _recreate_failed_receipt(
+    db: DbDep, current: CurrentUser, abs_path: Path, file: UploadFile, content: bytes, mime_guess: str
+) -> Receipt | None:
+    """Пересоздать запись чека со статусом FAILED, если она была потеряна из-за rollback."""
+    try:
+        r2 = Receipt(
+            family_id=current.family_id,
+            uploaded_by_id=current.user.id,
+            file_path=str(abs_path.relative_to(_receipts_root())),
+            original_name=(file.filename or "receipt")[:512],
+            mime_type=mime_guess or "image/jpeg",
+            size_bytes=len(content),
+            parse_status=ReceiptParseStatus.FAILED,
+        )
+        db.add(r2)
+        await db.flush()
+        await db.commit()
+        logger.info(f"Чек пересоздан после сбоя парсинга: {r2.id}")
+        return r2
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Не удалось пересоздать чек: {exc}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+
+async def _apply_parse(db: DbDep, r: Receipt, parsed: ocr.OcrResult | None, status_: ReceiptParseStatus) -> None:
+    """Сохраняет OCR-результат: реквизиты + позиции (автопересчёт суммы из позиций, ТЗ 7.4).
+
+    ВАЖНО: после db.rollback() scalar-поля объекта остаются «грязными» (в history),
+    и присваивание им тех же значений не создаёт UPDATE — в БД оставался NULL
+    (отсюда «Сумма чека: 0,00 ₽»). Поэтому store_name/inn/ocr_text total_amount
+    принудительно сбрасываем через Core UPDATE.
+    """
+    if parsed is None:
+        parsed = ocr.OcrResult()
+    # Гарантируем списки даже при None (fix 'NoneType' object is not iterable)
+    parsed_items = list(parsed.items or [])
+    existing = list(r.items or [])
+
+    new_items_sum: Decimal | None = None
+    if parsed_items and not existing:
+        for it in parsed_items:
             new_item = ReceiptItem(
                 receipt_id=r.id,
-                name=str(it["name"])[:500],
-                quantity=Decimal(str(it.get("quantity", 1))),
-                price=Decimal(str(it.get("price", 0))),
-                total=Decimal(str(it.get("total", 0))),
+                name=str(it.get("name", "Позиция"))[:500],
+                quantity=Decimal(str(it.get("quantity", 1) or 1)),
+                price=Decimal(str(it.get("price", 0) or 0)),
+                total=Decimal(str(it.get("total", 0) or 0)),
             )
             db.add(new_item)
             existing.append(new_item)
-        items_sum = sum((i.total for i in existing), Decimal("0"))
-        if items_sum > 0:
-            r.total_amount = items_sum
-    elif parsed.total and not r.total_amount:
-        r.total_amount = parsed.total
+        s = sum((i.total for i in existing), Decimal("0"))
+        if s > 0:
+            new_items_sum = s
+
+    # Автопересчёт из позиций имеет приоритет над OCR-полем «ИТОГ» и старым значением (ТЗ 7.4)
+    total_final = new_items_sum if new_items_sum is not None else (r.total_amount or parsed.total or Decimal("0"))
+    store_final = parsed.store_name or r.store_name
+    inn_final = parsed.inn or r.inn
+    text_final = (parsed.text[:20000] if parsed.text else None) or r.ocr_text
+
+    r.parse_status = status_
+    await db.flush()
+    # Принудительный Core UPDATE — гарантирует запись даже после rollback
+    await db.execute(
+        sa_update(Receipt)
+        .where(Receipt.id == r.id)
+        .values(
+            parse_status=status_,
+            total_amount=total_final,
+            store_name=store_final,
+            inn=inn_final,
+            ocr_text=text_final,
+        )
+    )
+    set_committed_value(r, "parse_status", status_)
+    set_committed_value(r, "total_amount", total_final)
+    set_committed_value(r, "store_name", store_final)
+    set_committed_value(r, "inn", inn_final)
+    set_committed_value(r, "ocr_text", text_final)
     await db.flush()
 
 
@@ -206,28 +266,54 @@ async def upload_receipt(
         try:
             await _parse_internal(db, r)
         except Exception as exc:  # noqa: BLE001 — распознавание не должно ломать загрузку
-            logger.warning(f"Автопарсинг чека {r.id} не удался: {exc}")
+            logger.warning(f"Автопарсинг чека {r.id} не удался: {exc}", exc_info=True)
             try:
                 await db.rollback()
             except Exception:  # noqa: BLE001
                 pass
-            # после rollback объект может быть в detached-состоянии — перезагружаем по id
-            r = await _reload_receipt_state(db, r)
-            if r.parse_status != ReceiptParseStatus.FAILED:
-                r.parse_status = ReceiptParseStatus.FAILED
-                await db.flush()
+            # ВАЖНО: после rollback неостановленный flush/commit приведёт к потере
+            # записи (No row was found при финализации). Принудительно коммитим чек
+            # со статусом FAILED.
+            try:
+                r = await _reload_receipt_state(db, r)
+                if r is not None and r.id is not None:
+                    await db.execute(
+                        sa_update(Receipt)
+                        .where(Receipt.id == r.id)
+                        .values(parse_status=ReceiptParseStatus.FAILED)
+                    )
+                    set_committed_value(r, "parse_status", ReceiptParseStatus.FAILED)
+                    await db.commit()
+                else:
+                    r = await _recreate_failed_receipt(db, current, abs_path, file, content, mime or guessed)
+            except Exception as exc2:  # noqa: BLE001
+                logger.error(f"Не удалось зафиксировать чек после сбоя парсинга: {exc2}", exc_info=True)
+                try:
+                    await db.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
 
     # Финальный шлюз: любые ошибки сохранения/перезагрузки НЕ должны превращаться
     # в голый Internal Server Error (500) для клиента. Чек уже сохранён на диск и в БД.
     try:
+        if r is None or getattr(r, "id", None) is None:
+            raise RuntimeError("Запись чека отсутствует в БД после загрузки")
         await _refresh_noload(db, r)
         return _to_out(r)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Ошибка финализации загрузки чека: {exc}", exc_info=True)
         try:
             await db.rollback()
-            r3 = await _reload_receipt_state(db, r)
+            r3 = await _reload_receipt_state(db, r) if r is not None else None
+            if r3 is None:
+                r3 = await _recreate_failed_receipt(
+                    db, current, abs_path, file, content, mime or guessed or "image/jpeg"
+                )
+            if r3 is None:
+                raise RuntimeError("Чек не удалось сохранить в БД")
             return _to_out(r3)
+        except HTTPException:
+            raise
         except Exception as exc2:  # noqa: BLE001
             # удаляем файл, если запись в БД так и не стала доступна
             try:
@@ -276,6 +362,8 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
             logger.error(f"Не удалось разобрать QR-payload '{payload[:200]}': {exc}", exc_info=True)
             p = None
         if p is not None:
+            logger.info(f"Сырой QR-код: {payload[:200]}")
+            logger.info(f"Распарсенные данные QR: sum={p.sum2}, fd={p.fd}, fn={p.fn}, fp={p.fp}, date={p.date}")
             r.qr_payload_raw = payload[:2000]
             r.total_amount = p.sum2
             r.fiscal_document_number = str(p.fd)
@@ -338,7 +426,25 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
         await db.flush()
         return "none", None
     if parsed.text:
-        # дата чека из OCR недоступна в OcrResult — фиксируем только распознанные поля
+        # Если OCR вернул «мусор» (не найдено ни суммы, ни ИНН) — пробуем ещё раз
+        # по исходному изображению без OpenCV-предобработки (она иногда портит фото).
+        if parsed.total is None and parsed.inn is None:
+            try:
+                import pytesseract
+                from PIL import Image
+
+                with Image.open(str(abs_path)) as raw_im:
+                    raw_text = await asyncio.to_thread(
+                        lambda: pytesseract.image_to_string(raw_im, lang="rus+eng", config="--psm 6")
+                    )
+                reparsed = ocr.parse_ocr_text(raw_text)
+                if (reparsed.total is not None or reparsed.inn is not None) and (
+                    (reparsed.total or 0) >= (parsed.total or 0)
+                ):
+                    logger.info("OCR с предобработкой дал мусор — использован повторный проход по оригиналу")
+                    parsed = reparsed if reparsed.text else parsed
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Повторный OCR-проход не удался: {exc}")
         await _apply_parse(db, r, parsed, ReceiptParseStatus.PARSED_OCR)
         return "ocr", None
     r.parse_status = ReceiptParseStatus.FAILED

@@ -55,7 +55,13 @@ class _SafeLoaderDescriptor:
                     if key in inst.__dict__:
                         return inst.__dict__[key]
                     return fallback
-                inst.__dict__[key] = fallback
+                # scalar-связь: пишем None через set_committed_value, а НЕ
+                # напрямую в __dict__ — иначе manager считает атрибут
+                # collection-импл'ом и ближайший rollback падает с
+                # AttributeError: 'NoneType' object has no attribute '_sa_adapter'.
+                from sqlalchemy.orm.attributes import set_committed_value
+
+                set_committed_value(inst, key, fallback)
                 return fallback
             raise
 
