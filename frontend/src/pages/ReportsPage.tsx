@@ -8,7 +8,7 @@ import { Card, Skeleton, fmtMoney, EmptyState } from '../components/ui';
 import { PageTitle } from '../components/Layout';
 
 interface CashflowPoint { date: string; income: number; expense: number }
-interface ByUser { user_name: string; income: number; expense: number }
+interface ByUser { user_name: string; name?: string; income: number; expense: number }
 
 async function download(path: string, filename: string) {
   const res = await fetch(api.url(path), {
@@ -38,7 +38,13 @@ export default function ReportsPage() {
   });
   const byUser = useQuery({
     queryKey: ['by-user', q],
-    queryFn: () => api.get<{ items: ByUser[] }>('/reports/by-user?' + q).catch(() => ({ items: [] as ByUser[] })),
+    // FIX: бэкенд возвращает {"items":[...]} — раньше фронт мог получить массив напрямую
+    // (или axios-обёртку), из-за чего items.length падал и показывалось «Нет данных».
+    queryFn: async () => {
+      const res: any = await api.get<any>('/reports/by-user?' + q);
+      const arr: ByUser[] = Array.isArray(res) ? res : (res?.items ?? []);
+      return { items: arr };
+    },
   });
 
   const cfData = (cashflow.data?.items ?? []).map((p) => ({
@@ -93,15 +99,17 @@ export default function ReportsPage() {
 
       <Card className="mt-4 p-4">
         <h3 className="mb-2 font-semibold">По участникам семьи</h3>
-        {byUser.isLoading ? <Skeleton className="h-32" /> : (byUser.data?.items.length ?? 0) === 0 ? (
-          <p className="text-sm text-slate-500">Нет данных или эндпоинт недоступен.</p>
+        {byUser.isLoading ? <Skeleton className="h-32" /> : byUser.isError ? (
+          <p className="text-sm text-red-600 dark:text-red-400">Не удалось загрузить данные отчёта.</p>
+        ) : (byUser.data?.items.length ?? 0) === 0 ? (
+          <p className="text-sm text-slate-500">Нет транзакций участников за выбранный период.</p>
         ) : (
           <table className="w-full text-sm">
             <thead><tr className="border-b text-left text-slate-500"><th className="py-1">Участник</th><th>Доходы</th><th>Расходы</th></tr></thead>
             <tbody>
-              {(byUser.data?.items ?? []).map((u) => (
-                <tr key={u.user_name} className="border-b last:border-0 dark:border-slate-800">
-                  <td className="py-1.5 font-medium">{u.user_name}</td>
+              {(byUser.data?.items ?? []).map((u, i) => (
+                <tr key={u.user_name || u.name || i} className="border-b last:border-0 dark:border-slate-800">
+                  <td className="py-1.5 font-medium">{u.user_name || u.name}</td>
                   <td className="text-emerald-600">{fmtMoney(u.income)}</td>
                   <td className="text-red-600">{fmtMoney(u.expense)}</td>
                 </tr>
