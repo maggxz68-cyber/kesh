@@ -82,6 +82,7 @@ async def recalc_account_balance(session: AsyncSession, account_id: _uuid.UUID |
         )
     ).scalar_one()
 
+    # transfer: исходящий учтён в outflow (сумма expense+transfer), входящий — прибавляем отдельно
     new_balance = acc.opening_balance + Decimal(income) + Decimal(transfers_in) - Decimal(outflow)
 
     await session.execute(

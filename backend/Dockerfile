@@ -26,11 +26,18 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     TZ=Europe/Moscow
 
-# Только рантайм-зависимости: tesseract OCR, zbar (pyzbar), libs для opencv-headless
+# Только рантайм-зависимости: tesseract OCR, zbar (pyzbar), libs для opencv-headless.
+# ВАЖНО: полный набор системных библиотек для OCR/QR выполняется ДО pip install
+# (установка wheels ниже) — иначе pytesseract/pyzbar/cv2 падают с Internal Server Error.
+# libgl1: в slim-образах Debian bookworm пакет libgl1-mesa-glx отсутствует (заменён на libgl1).
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl libpq5 \
-      tesseract-ocr tesseract-ocr-rus \
+      tesseract-ocr \
+      tesseract-ocr-rus \
+      tesseract-ocr-eng \
       libzbar0 \
+      libgl1 \
+      libglib2.0-0 \
       fonts-dejavu-core \
       tzdata \
     && rm -rf /var/lib/apt/lists/*

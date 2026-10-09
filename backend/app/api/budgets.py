@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 
 from app.core.deps import CurrentUser, DbDep, csrf_guard, get_current_user, parse_uuid
@@ -54,9 +54,10 @@ async def _spent(db: DbDep, family_id: uuid.UUID, b: Budget) -> Decimal:
 
 async def _to_out(db: DbDep, b: Budget) -> BudgetOut:
     spent = await _spent(db, b.family_id, b)
+    cat = None if b.category is None else _cat_out(b.category)
     return BudgetOut(
         id=b.id,
-        category=None if b.category is None else _cat_out(b.category),
+        category=cat,
         period=b.period,
         limit_amount=b.limit_amount,
         period_start=b.period_start,
@@ -64,23 +65,40 @@ async def _to_out(db: DbDep, b: Budget) -> BudgetOut:
         notify_on_overrun=b.notify_on_overrun,
         spent=spent,
         over_limit=bool(b.limit_amount > 0 and spent > b.limit_amount),
+        category_id=b.category_id,
+        category_name=None if cat is None else cat["name"],
+        category_color=None if cat is None else cat["color"],
+        amount=b.limit_amount,
+        year=b.period_start.year,
+        month=b.period_start.month,
     )
 
 
 def _cat_out(c: Category) -> dict:
-    return {"id": c.id, "name": c.name, "kind": c.kind, "color": c.color, "icon": c.icon,
-            "parent_id": c.parent_id, "is_system": c.is_system}
+    return {"id": c.id, "family_id": c.family_id, "name": c.name, "kind": c.kind,
+            "color": c.color, "icon": c.icon, "parent_id": c.parent_id,
+            "is_system": c.is_system, "sort_order": c.sort_order,
+            "is_archived": c.is_archived}
 
 
 @router.get("", response_model=list[BudgetOut])
 async def list_budgets(
-    db: DbDep, current: CurrentUserDep, active_only: bool = False
+    db: DbDep,
+    current: CurrentUserDep,
+    active_only: bool = False,
+    year: int | None = Query(None, ge=2000, le=2999),
+    month: int | None = Query(None, ge=1, le=12),
 ) -> list[BudgetOut]:
     stmt = (
         select(Budget)
         .where(Budget.family_id == current.family_id, Budget.deleted_at.is_(None))
         .order_by(Budget.period_start.desc(), Budget.limit_amount.desc())
     )
+    if year and month:
+        # бюджет «для месяца»: период пересекается с указанным месяцем
+        m_start = date(year, month, 1)
+        m_end = m_start.replace(day=calendar.monthrange(year, month)[1])
+        stmt = stmt.where(Budget.period_start <= m_end, Budget.period_end >= m_start)
     if active_only:
         today = date.today()
         stmt = stmt.where(Budget.period_start <= today, Budget.period_end >= today)
@@ -95,11 +113,11 @@ async def create_budget(body: BudgetCreate, db: DbDep, current: CurrentUserDep) 
     ).scalar_one_or_none()
     if cat is None or (cat.family_id != current.family_id and not cat.is_system):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Категория не найдена")
-    start = body.period_start or date.today()
+    start = body.effective_start or date.today()
     p_start, p_end = _period_bounds(body.period, start)
-    dup = (
+    existing = (
         await db.execute(
-            select(Budget.id).where(
+            select(Budget).where(
                 Budget.family_id == current.family_id,
                 Budget.category_id == body.category_id,
                 Budget.period == body.period,
@@ -107,14 +125,22 @@ async def create_budget(body: BudgetCreate, db: DbDep, current: CurrentUserDep) 
                 Budget.deleted_at.is_(None),
             )
         )
-    ).scalar_one_or_none()
-    if dup:
+    ).scalars().all()
+    # Дубликат: обновляем лимит существующего бюджета вместо конфликта.
+    # Это позволяет фронту «пересоздавать» бюджет-шаблон с реальным лимитом.
+    dup = next((x for x in existing if x.limit_amount == ZERO), None)
+    if dup is not None:
+        dup.limit_amount = body.effective_limit
+        dup.notify_on_overrun = body.notify_on_overrun
+        await db.flush()
+        return await _to_out(db, dup)
+    if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Бюджет по этой категории на период уже существует")
     b = Budget(
         family_id=current.family_id,
         category_id=body.category_id,
         period=body.period,
-        limit_amount=body.limit_amount,
+        limit_amount=body.effective_limit,
         period_start=p_start,
         period_end=p_end,
         notify_on_overrun=body.notify_on_overrun,

@@ -23,6 +23,11 @@ class OcrResult:
 _NUM_RE = re.compile(r"^\s*[\d\s]+,\d{2}\s*$")
 _INN_RE = re.compile(r"\b(\d{10}|\d{12})\b")
 _TOTAL_RE = re.compile("ИТОГ|ВСЕГО|СУММА|К\\s*ОПЛАТЕ", re.IGNORECASE)
+# «Магазинное» имя: только кириллица/латиница, дефисы и кавычки (без цифр/мусора OCR)
+# Кандидат в название магазина: до 2 слов без цифр и «мусорных» символов
+_SHOP_WORD_RE = re.compile(r"^[А-Яа-яЁёA-Za-z][А-Яа-яЁёA-Za-z.'\"-]{1,30}$")
+# Позволенные спецсимволы внутри кандидата в название (№, /, :, скобки — но НЕ = % # & и т.п.)
+_SHOP_ALLOWED_PUNCT = set("№/:()'\"-.,& ")
 
 
 def _to_decimal(s: str) -> Decimal | None:
@@ -113,12 +118,67 @@ def parse_ocr_text(text: str) -> OcrResult:
                     {"name": m2.group("name").strip()[:500], "quantity": Decimal("1"), "price": t, "total": t}
                 )
 
-    # Магазин: первая содержательная строка заголовка
-    for ln in lines[:6]:
+    # Магазин: первая содержательная строка заголовка с фильтрацией OCR-мусора
+    def _shop_candidate(raw_line: str) -> str | None:
+        """Возвращает нормализованное название из строки или None (строка — мусор)."""
+        cand = raw_line.strip()
+        if len(cand) < 3 or _NUM_RE.match(cand):
+            return None
+        # Цифры и типичный OCR-мусор (= % # * + < > [ ] | ~ ` ^ _) недопустимы
+        if re.search(r"[0-9=%_#$*+<>{}\[\]|~`^]", cand):
+            return None
+        if re.search(r"(.)\1{2,}", cand):  # "SSS", "!!!" и т.п.
+            return None
+        # "МАГАЗИН / ООО Ромашка" → последний сегмент после "/"
+        if "/" in cand:
+            cand = cand.split("/")[-1].strip()
+        words = cand.split()
+        if not words or len(words) > 4:
+            return None
+        legal_prefixes = {"ООО", "ОАО", "ЗАО", "ПАО", "АО", "ИП", "ЧОО", "МБОУ"}
+        while words and words[0].upper() in legal_prefixes:
+            words = words[1:]
+        while len(words) > 1 and words[-1].upper() in legal_prefixes:
+            words = words[:-1]
+        if not words:
+            return None
+        if not all(_SHOP_WORD_RE.match(w) for w in words):
+            return None
+        block_words = {"КАССА", "ЧЕК", "КОНТЕНЕР", "ЗАМЕНА", "СМЕНА", "ИТОГ", "ВСЕГО", "ДАТА", "РЕЖИМ", "SPO", "SKU", "QR", "ФН", "ФД", "ФП"}
+        if all(w.upper() in block_words for w in words):
+            return None
+        return " ".join(words)[:300]
+
+    store_name = None
+    # Проход 1: все строки шапки (№ и прочие символы допускаются)
+    _block_substrings = ("КАССА", "КАССОВЫЙ", "ЗАМЕНА", "СМЕНА", "РЕЖИМ", "ИТОГ", "ВСЕГО")
+    _skip_tokens = {"КАССА", "ЧЕК", "КОНТЕНЕР", "ЗАМЕНА", "СМЕНА", "ИТОГ", "ВСЕГО", "ДАТА", "РЕЖИМ", "SPO", "SKU", "QR"}
+    for ln in lines[:8]:
         up = ln.upper()
-        if any(b in up for b in ("ИНН", "ФН", "КАСС", "ЧЕК", "РЕЖИМ", "ДАТА")):
+        if any(b in up for b in ("ИНН", "ФН", "ЧЕК", "ДАТА")):
             continue
-        if len(ln) >= 3 and not _NUM_RE.match(ln):
-            res.store_name = ln[:300]
+        if any(b in up for b in _block_substrings):
+            continue
+        store_name = _shop_candidate(ln)
+        if not store_name:
+            # Строка вида "КАССА №1 ООО Магнит" — пробуем без служебных токенов,
+            # но только если в строке нет OCR-мусора (= % & и т.п.)
+            if not re.search(r"[=%&#@!]", ln):
+                kept = [w for w in ln.split() if w.isalpha() and w.upper() not in _skip_tokens]
+                if kept:
+                    store_name = _shop_candidate(" ".join(kept))
+        if store_name:
             break
+    # Проход 2 (если в шапке только мусор): первые >=5 символов без цифр из строк шапки
+    if not store_name:
+        for ln in lines[:6]:
+            letters = "".join(ch for ch in ln if ch.isalpha() or ch.isspace())
+            words_ = [w for w in letters.split() if w.upper() not in _skip_tokens | {"ООО", "ОАО", "ЗАО", "ПАО", "АО", "ИП"}]
+            word = max(words_, key=len, default="")
+            if len(word) >= 5 and word.lower() not in {"итог", "всего", "чеки", "проверьте", "касса", "замена"}:
+                store_name = word[:300]
+                break
+    if store_name:
+        res.store_name = store_name
     return res
+

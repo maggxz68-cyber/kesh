@@ -10,8 +10,7 @@ from datetime import date, datetime, time, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import noload
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, inspect as _sa_inspect, or_, select
 
 from app.core.deps import CurrentUser, DbDep, csrf_guard, get_current_user, parse_uuid
 from app.models.enums import TransactionType, UserRole
@@ -29,21 +28,14 @@ from app.schemas.transactions import (
 )
 from app.services.balances import affected_account_ids, mark_accounts_dirty
 
-async def _refresh_noload(db, obj):
-    """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations)."""
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import select
-    from sqlalchemy.orm.attributes import set_committed_value
+async def _reload(db, obj):
+    """Async-safe перезагрузка объекта со связями (lazy=selectin) после flush."""
+    from sqlalchemy import select as sa_select
 
-    mp = sa_inspect(type(obj)).mapper
-    table = mp.local_table
-    pk_names = [pk.name for pk in mp.primary_key]
-    stmt = select(table).where(*[table.c[n] == getattr(obj, n) for n in pk_names])
-    res = await db.execute(stmt)
-    row = res.mappings().one()
-    for col in table.columns:
-        if col.key in mp.attrs:
-            set_committed_value(obj, col.key, row[col.key])
+    pk = _sa_inspect(type(obj)).mapper.primary_key[0].name
+    return (
+        await db.execute(sa_select(type(obj)).where(getattr(type(obj), pk) == getattr(obj, pk)))
+    ).scalar_one()
 
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
@@ -138,7 +130,10 @@ async def list_transactions(
     db: DbDep,
     current: CurrentUserDep,
     page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=1, le=500),
+    per_page: int = Query(
+        50, ge=1, le=500, alias="limit", description="Размер страницы (limit)"
+    ),
+    offset: int = Query(0, ge=0, description="Смещение (offset)"),
     sort: str = Query("-occurred_at"),
     type: str | None = None,
     account_id: uuid.UUID | None = None,
@@ -151,7 +146,8 @@ async def list_transactions(
     amount_max: float | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    q: str | None = Query(default=None, max_length=200, description="Поиск по комментарию/контрагенту"),
+    q: str | None = Query(default=None, max_length=200, alias="search",
+                          description="Поиск по комментарию/контрагенту"),
 ) -> Page[dict]:
     stmt = select(Transaction).where(
         Transaction.family_id == current.family_id, Transaction.deleted_at.is_(None)
@@ -198,8 +194,9 @@ async def list_transactions(
     if col is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Недопустимая сортировка")
     stmt = stmt.order_by(col.desc() if desc else col.asc())
-    rows = (await db.execute(stmt.offset((page - 1) * per_page).limit(per_page))).scalars().all()
+    rows = (await db.execute(stmt.offset(offset).limit(per_page))).scalars().all()
 
+    page = offset // per_page + 1 if per_page else 1
     pages = (total + per_page - 1) // per_page if total else 0
     return Page(items=[_to_out(t) for t in rows], total=total, page=page, per_page=per_page, pages=pages)
 
@@ -239,7 +236,7 @@ async def create_transaction(body: TransactionCreate, db: DbDep, current: Curren
         db.add(ReceiptTransaction(receipt_id=body.receipt_id, transaction_id=tx.id))
         await db.flush()
     mark_accounts_dirty(db, affected_account_ids(tx))
-    await _refresh_noload(db, tx)
+    await _reload(db, tx)
     return _to_out(tx)
 
 
@@ -257,7 +254,7 @@ async def bulk_delete(body: BulkIds, db: DbDep, current: CurrentUserDep) -> Bulk
         mark_accounts_dirty(db, affected_account_ids(tx))
         affected += 1
     await db.flush()
-    return BulkResult(affected=affected)
+    return BulkResult(affected=affected, deleted=affected)
 
 
 @router.patch("/{tx_id}", response_model=dict)
@@ -285,7 +282,7 @@ async def update_transaction(tx_id: str, body: TransactionUpdate, db: DbDep, cur
             setattr(tx, k, v)
     mark_accounts_dirty(db, set(old_ids) | set(affected_account_ids(tx)))
     await db.flush()
-    await _refresh_noload(db, tx)
+    await _reload(db, tx)
     return _to_out(tx)
 
 
@@ -344,5 +341,5 @@ async def create_transfer(body: TransferCreate, db: DbDep, current: CurrentUserD
     db.add(tx)
     await db.flush()
     mark_accounts_dirty(db, affected_account_ids(tx))
-    await _refresh_noload(db, tx)
+    await _reload(db, tx)
     return _to_out(tx)

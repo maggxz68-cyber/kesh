@@ -232,7 +232,10 @@ async def test_reports_endpoints(client):
     assert float(s["income_total"]) == 10000 and float(s["expense_total"]) == 300
 
     bc = (await client.get("/api/reports/by-category", headers=h)).json()
-    assert any(x["name"] == "Продукты" for x in bc["items"]) if isinstance(bc, dict) else True
+    if isinstance(bc, dict):
+        assert any(x["category_name"] == "Продукты" for x in bc["items"])
+    else:
+        assert any(x["category_name"] == "Продукты" for x in bc)
 
     bm = (await client.get("/api/reports/by-month", headers=h)).json()
     assert isinstance(bm, (list, dict))

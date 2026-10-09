@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     tz: str = "Europe/Moscow"
     domain: str = "localhost"
-    cors_origins: str = "http://localhost:5173"
+    # CORS. По умолчанию разрешаем и dev (5173), и прямой доступ к backend (8000) —
+    # иначе фронт, открытый как http://HOST:8000, не сможет делать запросы на /api.
+    cors_origins: str = "http://localhost:5173,http://localhost:8000"
 
     # Database
     database_url: str = "postgresql+asyncpg://ffuser:CHANGE_ME@localhost:5432/family_finance"

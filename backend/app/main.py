@@ -1,8 +1,11 @@
 """Family Finance Tracker — backend entrypoint."""
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -80,3 +83,56 @@ app.include_router(export.router, prefix="/api/export", tags=["export"])
 async def health() -> dict[str, str]:
     """Liveness-проба для Docker HEALTHCHECK и nginx."""
     return {"status": "ok", "app": settings.app_name, "env": settings.app_env}
+
+
+@app.get("/api/health/ocr", tags=["system"])
+async def health_ocr() -> dict[str, object]:
+    """Диагностика сканера чеков: видны ли OCR/QR-зависимости в контейнере backend.
+
+    Если какой-то компонент недоступен — причина 500/FAILED при распознавании
+    именно в этом (ставятся в backend/Dockerfile: tesseract-ocr*, libzbar0).
+    """
+    diag: dict[str, object] = {}
+    try:
+        import shutil
+
+        tesserocr_bin = shutil.which("tesseract")
+        langs: list[str] = []
+        if tesserocr_bin:
+            import subprocess
+
+            out = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True, timeout=10)
+            langs = [ln.strip() for ln in out.stdout.splitlines()[1:] if ln.strip()]
+        diag["tesseract_binary"] = tesserocr_bin
+        diag["tesseract_languages"] = langs
+    except Exception as exc:  # noqa: BLE001
+        diag["tesseract_error"] = f"{exc.__class__.__name__}: {exc}"
+    for pkg in ("pytesseract", "cv2", "pyzbar", "PIL", "numpy"):
+        try:
+            __import__(pkg)
+            diag[pkg] = True
+        except Exception as exc:  # noqa: BLE001
+            diag[pkg] = f"MISSING ({exc.__class__.__name__})"
+    return diag
+
+
+# Локальная разработка без nginx: отдаём собранный фронтенд (frontend/dist),
+# если он существует. В проде статикой занимается nginx/frontend-контейнер.
+_frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if _frontend_dist.is_dir():
+    # SPA с клиентским роутингом (react-router BrowserRouter): любой неизвестный
+    # путь должен возвращать index.html, иначе прямые заходы на /login,
+    # /superadmin/login и т.п. дают 404 от сервера.
+    _static = StaticFiles(directory=str(_frontend_dist))
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(request: Request, full_path: str):
+        # Не перехватываем /api/* — несуществующий API-путь остаётся 404 JSON.
+        if full_path.startswith("api/"):
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidate = (_frontend_dist / full_path).resolve()
+        if full_path and candidate.is_file() and candidate.is_relative_to(_frontend_dist.resolve()):
+            return await _static.get_response(full_path, request.scope)
+        return await _static.get_response("index.html", request.scope)
