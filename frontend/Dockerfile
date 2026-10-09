@@ -12,7 +12,7 @@ COPY package.json package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm \
     if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-COPY tsconfig*.json vite.config.ts index.html ./
+COPY tsconfig*.json vite.config.ts postcss.config.cjs tailwind.config.js index.html ./
 COPY public ./public
 COPY src ./src
 
