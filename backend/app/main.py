@@ -85,6 +85,37 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "app": settings.app_name, "env": settings.app_env}
 
 
+@app.get("/api/health/ocr", tags=["system"])
+async def health_ocr() -> dict[str, object]:
+    """Диагностика сканера чеков: видны ли OCR/QR-зависимости в контейнере backend.
+
+    Если какой-то компонент недоступен — причина 500/FAILED при распознавании
+    именно в этом (ставятся в backend/Dockerfile: tesseract-ocr*, libzbar0).
+    """
+    diag: dict[str, object] = {}
+    try:
+        import shutil
+
+        tesserocr_bin = shutil.which("tesseract")
+        langs: list[str] = []
+        if tesserocr_bin:
+            import subprocess
+
+            out = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True, timeout=10)
+            langs = [ln.strip() for ln in out.stdout.splitlines()[1:] if ln.strip()]
+        diag["tesseract_binary"] = tesserocr_bin
+        diag["tesseract_languages"] = langs
+    except Exception as exc:  # noqa: BLE001
+        diag["tesseract_error"] = f"{exc.__class__.__name__}: {exc}"
+    for pkg in ("pytesseract", "cv2", "pyzbar", "PIL", "numpy"):
+        try:
+            __import__(pkg)
+            diag[pkg] = True
+        except Exception as exc:  # noqa: BLE001
+            diag[pkg] = f"MISSING ({exc.__class__.__name__})"
+    return diag
+
+
 # Локальная разработка без nginx: отдаём собранный фронтенд (frontend/dist),
 # если он существует. В проде статикой занимается nginx/frontend-контейнер.
 _frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
