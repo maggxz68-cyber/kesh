@@ -49,13 +49,22 @@ SORTABLE = {
 
 
 def _to_out(tx: Transaction) -> dict:
-    """ORM → сериализуемый dict с вложенными ссылками."""
+    """ORM → сериализуемый dict с вложенными ссылками.
+
+    Совместимость с фронтендом: отдаём И плоскую структуру (date / account_name /
+    category_name и т.д.), которую ожидает UI, И вложенные объекты (старый контракт).
+    Это устраняет «Invalid Date» и «Без категории» на странице транзакций.
+    """
     def _ref(obj, fields):
         if obj is None:
             return None
         return {k: getattr(obj, k) for k in fields}
 
-    return {
+    cat = _ref(tx.category, ["id", "name", "kind", "color", "icon"])
+    acc = _ref(tx.account, ["id", "name", "type", "color", "icon"])
+    cp = _ref(tx.counterparty, ["id", "name"])
+    author = _ref(tx.author, ["id", "name"])
+    out = {
         "id": tx.id,
         "type": tx.type,
         "amount": tx.amount,
@@ -63,15 +72,26 @@ def _to_out(tx: Transaction) -> dict:
         "occurred_at": tx.occurred_at,
         "comment": tx.comment,
         "has_receipt": tx.has_receipt,
-        "author": _ref(tx.author, ["id", "name"]),
-        "account": _ref(tx.account, ["id", "name", "type", "color", "icon"]),
+        "author": author,
+        "account": acc,
         "target_account": _ref(tx.target_account, ["id", "name", "type", "color", "icon"]),
-        "category": _ref(tx.category, ["id", "name", "kind", "color", "icon"]),
-        "counterparty": _ref(tx.counterparty, ["id", "name"]),
+        "category": cat,
+        "counterparty": cp,
         "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in tx.tags],
         "receipt_ids": [l.receipt_id for l in tx.receipt_links],
         "created_at": tx.created_at,
+        # --- плоские поля для фронтенда (TransactionsPage и др.) ---
+        "date": tx.occurred_at,
+        "account_id": tx.account_id,
+        "account_name": acc["name"] if acc else None,
+        "account_type": acc["type"] if acc else None,
+        "category_id": tx.category_id,
+        "category_name": cat["name"] if cat else None,
+        "category_color": cat["color"] if cat else None,
+        "counterparty_name": cp["name"] if cp else None,
+        "author_name": author["name"] if author else None,
     }
+    return out
 
 
 async def _validate_refs(db: DbDep, current: CurrentUser, body: TransactionCreate | TransactionUpdate) -> None:

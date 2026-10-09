@@ -1,7 +1,7 @@
-# Python bytecode and cache
+# Python compiled files
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
 
-# Logs
-*.log
+# Environment variables
+.env
+.env.local
