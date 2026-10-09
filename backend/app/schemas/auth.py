@@ -21,6 +21,9 @@ class LoginRequest(BaseModel):
     # Гибкое поле: допускает email ИЛИ короткий логин (например "admin").
     # Жёсткая EmailStr-валидация блокировала вход по логину (422 без @).
     email: str = Field(min_length=1, max_length=320)
+    # ОБЯЗАТЕЛЬНОЕ поле пароля. Его отсутствие ломало POST /auth/login с 500:
+    # AttributeError: 'LoginRequest' object has no attribute 'password'
+    password: str = Field(min_length=1, max_length=128)
 
     @field_validator("email")
     @classmethod

@@ -12,6 +12,7 @@ interface AccountRow {
   account_name: string;
   type: string;
   currency: string;
+  is_archived?: boolean;
   opening_balance: number;
   inflow: number;
   outflow: number;
