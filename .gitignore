@@ -1,7 +1,2 @@
-# Compiled and build artifacts
 __pycache__/
 *.pyc
-
-# Temp files
-tmp_dbg.db
-tmp_dbg2.db

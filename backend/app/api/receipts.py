@@ -64,6 +64,7 @@ async def _get_receipt(db: DbDep, current: CurrentUser, receipt_id: uuid_mod.UUI
 
 
 def _to_out(r: Receipt, include_payload: bool = False) -> ReceiptOut:
+    items_total = sum((i.total for i in r.items), Decimal("0")) if r.items else Decimal("0")
     data = {
         "id": r.id,
         "original_name": r.original_name,
@@ -74,14 +75,14 @@ def _to_out(r: Receipt, include_payload: bool = False) -> ReceiptOut:
         "inn": r.inn,
         "receipt_date": r.receipt_date,
         "total_amount": r.total_amount,
-        "items_total": r.items_total,
+        "items_total": items_total,
         "meta": r.meta,
         "items": [
             {"id": i.id, "name": i.name, "quantity": i.quantity, "price": i.price,
              "total": i.total, "vat_rate": i.vat_rate}
-            for i in r.items
+            for i in (r.items or [])
         ],
-        "transaction_ids": [l.transaction_id for l in r.transaction_links],
+        "transaction_ids": [l.transaction_id for l in (r.transaction_links or [])],
         "created_at": r.created_at,
     }
     if include_payload:
@@ -98,19 +99,20 @@ async def _apply_parse(db: DbDep, r: Receipt, parsed: ocr.OcrResult, status_: Re
         r.store_name = parsed.store_name
     if parsed.inn and not r.inn:
         r.inn = parsed.inn
-    # позиции
-    if parsed.items and not r.items:
-        r.items.clear()
+    # позиции (r.items — selectin-загруженное relationship, доступен в async без lazy-load)
+    existing = list(r.items)
+    if parsed.items and not existing:
         for it in parsed.items:
-            r.items.append(
-                ReceiptItem(
-                    name=str(it["name"])[:500],
-                    quantity=Decimal(str(it.get("quantity", 1))),
-                    price=Decimal(str(it.get("price", 0))),
-                    total=Decimal(str(it.get("total", 0))),
-                )
+            new_item = ReceiptItem(
+                receipt_id=r.id,
+                name=str(it["name"])[:500],
+                quantity=Decimal(str(it.get("quantity", 1))),
+                price=Decimal(str(it.get("price", 0))),
+                total=Decimal(str(it.get("total", 0))),
             )
-        items_sum = sum((i.total for i in r.items), Decimal("0"))
+            db.add(new_item)
+            existing.append(new_item)
+        items_sum = sum((i.total for i in existing), Decimal("0"))
         if items_sum > 0:
             r.total_amount = items_sum
     elif parsed.total and not r.total_amount:
@@ -170,22 +172,46 @@ async def upload_receipt(
             await _parse_internal(db, r)
         except Exception as exc:  # noqa: BLE001 — распознавание не должно ломать загрузку
             logger.warning(f"Автопарсинг чека {r.id} не удался: {exc}")
-            r.parse_status = ReceiptParseStatus.FAILED
-            await db.flush()
+            try:
+                await db.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            # после rollback объект может быть в detached-состоянии — перезагружаем по id
+            r2 = (await db.execute(select(Receipt).where(Receipt.id == r.id))).scalar_one_or_none()
+            if r2 is not None:
+                r2.parse_status = ReceiptParseStatus.FAILED
+                await db.flush()
+                r = r2
 
     await _refresh_noload(db, r)
     return _to_out(r)
 
 
 async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
-    """QR ФНС → fallback OCR. Возвращает (method, ответ проверки ФНС)."""
+    """QR ФНС → fallback OCR. Возвращает (method, ответ проверки ФНС).
+
+    Безопасно для async: связи r.items / r.transaction_links объявлены как
+    lazy="selectin" и уже загружены при получении чека; изменённые позиции
+    перезагружаются через select-запрос после flush.
+    """
     abs_path = _receipts_root() / r.file_path
     r.parse_status = ReceiptParseStatus.PARSING
     await db.flush()
 
+    async def _reload_items(receipt: Receipt) -> list[ReceiptItem]:
+        return list(
+            (
+                await db.execute(
+                    select(ReceiptItem).where(ReceiptItem.receipt_id == receipt.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
     # 1) QR-код ФНС
     try:
-        payload = await asyncio.to_thread(fns.decode_qr, abs_path)
+        payload = await asyncio.to_thread(fns.decode_qr, str(abs_path))
     except Exception as exc:  # noqa: BLE001 — pyzbar/PIL могут отсутствовать в окружении
         logger.warning(f"QR-декодирование недоступно ({exc.__class__.__name__}: {exc}); пробуем OCR")
         payload = None
@@ -209,10 +235,12 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                 r.inn = check.get("inn") or r.inn
                 r.fiscal_provider_inn = check.get("fiscal_provider_inn") or r.fiscal_provider_inn
                 if check.get("items"):
-                    r.items.clear()
+                    for old in await _reload_items(r):
+                        await db.delete(old)
                     for it in check["items"]:
-                        r.items.append(
+                        db.add(
                             ReceiptItem(
+                                receipt_id=r.id,
                                 name=str(it.get("name", ""))[:500],
                                 quantity=Decimal(str(it.get("quantity", 1))),
                                 price=Decimal(str(it.get("price", 0))),
@@ -220,6 +248,11 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                                 vat_rate=it.get("vat_rate"),
                             )
                         )
+                    await db.flush()
+                    new_items = await _reload_items(r)
+                    s = sum((i.total for i in new_items), Decimal("0"))
+                    if s > 0:
+                        r.total_amount = s
             r.meta = meta
             r.parse_status = ReceiptParseStatus.PARSED_QR
             await db.flush()
