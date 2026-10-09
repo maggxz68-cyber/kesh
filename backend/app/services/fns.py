@@ -104,11 +104,16 @@ def parse_payload(payload: str) -> FnPayload | None:
         date = None
         if re.fullmatch(r"[0-9a-fA-F]{12}", raw_t):
             type_tag = int(raw_t[:2], 16)          # старший байт 12-hex тега типа
-        elif re.fullmatch(r"\d{8}T?\d{6}", raw_t):
-            # t=YYYYMMDDHHMMSS / t=YYYYMMDDTHHMMSS (современные ККТ кладут дату прямо в t)
+        elif re.fullmatch(r"\d{8}T?\d{4,6}", raw_t):
+            # t=YYYYMMDDHHMM / t=YYYYMMDDTHHMM / t=YYYYMMDDHHMMSS / t=YYYYMMDDTHHMMSS
+            # Современные ККТ часто выдают формат без секунд (t=20260926T0834)
             type_tag = 0
+            clean_t = raw_t.replace("T", "")
             try:
-                date = datetime.strptime(raw_t.replace("T", ""), "%Y%m%d%H%M%S")
+                if len(clean_t) == 12:
+                    date = datetime.strptime(clean_t, "%Y%m%d%H%M")
+                elif len(clean_t) == 14:
+                    date = datetime.strptime(clean_t, "%Y%m%d%H%M%S")
             except ValueError:
                 pass
         elif re.fullmatch(r"\d+", raw_t):

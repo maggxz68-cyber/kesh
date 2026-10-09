@@ -58,7 +58,10 @@ async function request<T>(
 
 export const api = {
   get: <T>(p: string) => request<T>(p),
-  post: <T>(p: string, json?: unknown) => request<T>(p, { method: 'POST', json }),
+  // json===undefined → тело не отправляется (эндпоинты без тела, напр. /auth/demo-login);
+  // null → явный "{}" (некоторые прокси/валидаторы требуют тело у POST)
+  post: <T>(p: string, json?: unknown) =>
+    request<T>(p, { method: 'POST', json: json === undefined ? undefined : (json === null ? {} : json) }),
   patch: <T>(p: string, json?: unknown) => request<T>(p, { method: 'PATCH', json }),
   del: <T>(p: string) => request<T>(p, { method: 'DELETE' }),
   upload: <T>(p: string, form: FormData) => request<T>(p, { method: 'POST', form }),
