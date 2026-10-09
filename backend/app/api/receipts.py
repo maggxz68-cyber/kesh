@@ -28,7 +28,12 @@ from app.schemas.reports import ReceiptOut, ReceiptParseResult, ReceiptUpdate
 from app.services import fns, ocr
 
 async def _refresh_noload(db, obj):
-    """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations)."""
+    """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations).
+
+    ВАЖНО: не трогаем collection-атрибуты (relationship list) — запись None в
+    __dict__ вместо ActiveCollection ломает ORM (AttributeError '_sa_adapter'
+    при следующем flush/rollback). Их перезагружаем selectin-запросом отдельно.
+    """
     from sqlalchemy import inspect as sa_inspect
     from sqlalchemy import select
     from sqlalchemy.orm.attributes import set_committed_value
@@ -40,8 +45,38 @@ async def _refresh_noload(db, obj):
     res = await db.execute(stmt)
     row = res.mappings().one()
     for col in table.columns:
-        if col.key in mp.attrs:
+        if col.key in mp.attrs and col.key not in mp.relationships:
             set_committed_value(obj, col.key, row[col.key])
+
+
+async def _reload_receipt_state(db, r: Receipt) -> Receipt:
+    """Перезагрузить чек после rollback/ошибок парсинга (async-safe)."""
+    fresh = (
+        await db.execute(select(Receipt).where(Receipt.id == r.id))
+    ).scalar_one_or_none()
+    if fresh is None:
+        return r
+    items = (
+        await db.execute(select(ReceiptItem).where(ReceiptItem.receipt_id == fresh.id))
+    ).scalars().all()
+    links = (
+        await db.execute(
+            select(ReceiptTransaction).where(ReceiptTransaction.receipt_id == fresh.id)
+        )
+    ).scalars().all()
+    set_coll = getattr(fresh, "items", None)
+    adapter = getattr(set_coll, "_sa_adapter", None)
+    if adapter is not None and hasattr(adapter, "set"):
+        adapter.set(items)
+    else:  # pragma: no cover - fallback
+        fresh.items = list(items)
+    set_tl = getattr(fresh, "transaction_links", None)
+    tl_adapter = getattr(set_tl, "_sa_adapter", None)
+    if tl_adapter is not None and hasattr(tl_adapter, "set"):
+        tl_adapter.set(links)
+    else:  # pragma: no cover - fallback
+        fresh.transaction_links = list(links)
+    return fresh
 
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
@@ -177,14 +212,33 @@ async def upload_receipt(
             except Exception:  # noqa: BLE001
                 pass
             # после rollback объект может быть в detached-состоянии — перезагружаем по id
-            r2 = (await db.execute(select(Receipt).where(Receipt.id == r.id))).scalar_one_or_none()
-            if r2 is not None:
-                r2.parse_status = ReceiptParseStatus.FAILED
+            r = await _reload_receipt_state(db, r)
+            if r.parse_status != ReceiptParseStatus.FAILED:
+                r.parse_status = ReceiptParseStatus.FAILED
                 await db.flush()
-                r = r2
 
-    await _refresh_noload(db, r)
-    return _to_out(r)
+    # Финальный шлюз: любые ошибки сохранения/перезагрузки НЕ должны превращаться
+    # в голый Internal Server Error (500) для клиента. Чек уже сохранён на диск и в БД.
+    try:
+        await _refresh_noload(db, r)
+        return _to_out(r)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Ошибка финализации загрузки чека: {exc}", exc_info=True)
+        try:
+            await db.rollback()
+            r3 = await _reload_receipt_state(db, r)
+            return _to_out(r3)
+        except Exception as exc2:  # noqa: BLE001
+            # удаляем файл, если запись в БД так и не стала доступна
+            try:
+                abs_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            logger.error(f"Чек {r.id} не удалось сохранить: {exc2}", exc_info=True)
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"Ошибка сохранения чека: {exc2.__class__.__name__}: {str(exc2)[:200]}",
+            ) from exc2
 
 
 async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
@@ -216,7 +270,11 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
         logger.warning(f"QR-декодирование недоступно ({exc.__class__.__name__}: {exc}); пробуем OCR")
         payload = None
     if payload:
-        p = fns.parse_payload(payload)
+        try:
+            p = fns.parse_payload(payload)
+        except Exception as exc:  # noqa: BLE001 — повреждённый/нестандартный payload не должен давать 500
+            logger.error(f"Не удалось разобрать QR-payload '{payload[:200]}': {exc}", exc_info=True)
+            p = None
         if p is not None:
             r.qr_payload_raw = payload[:2000]
             r.total_amount = p.sum2
@@ -227,8 +285,12 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
             if p.receipt_number:
                 r.receipt_number = p.receipt_number[:64]
             if p.date:
-                r.receipt_date = p.date.replace(tzinfo=timezone.utc)
-            check = await fns.check_receipt(p)
+                r.receipt_date = p.date.replace(tzinfo=timezone.utc) if p.date.tzinfo is None else p.date
+            try:
+                check = await fns.check_receipt(p)
+            except Exception as exc:  # noqa: BLE001 — недоступность API ФНС не должна давать 500
+                logger.error(f"Проверка чека в ФНС завершилась ошибкой: {exc}", exc_info=True)
+                check = None
             if check:
                 meta["fns_check"] = check
                 r.store_name = check.get("store_name") or r.store_name
@@ -288,8 +350,32 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
 async def parse_receipt(receipt_id: str, db: DbDep, current: CurrentUserDep) -> ReceiptParseResult:
     """Явный запуск распознавания (индикатор обработки на /scan, ТЗ 7.7)."""
     r = await _get_receipt(db, current, parse_uuid(receipt_id))
-    method, fns_check = await _parse_internal(db, r)
-    await _refresh_noload(db, r)
+    try:
+        method, fns_check = await _parse_internal(db, r)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — понятное сообщение вместо голого 500
+        logger.error(f"Ошибка распознавания чека {receipt_id}: {exc}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Ошибка распознавания: {exc.__class__.__name__}: {str(exc)[:300]}",
+        ) from exc
+    try:
+        await _refresh_noload(db, r)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Ошибка перезагрузки чека после парсинга: {exc}", exc_info=True)
+        try:
+            await db.rollback()
+            r = await _reload_receipt_state(db, r)
+        except Exception as exc2:  # noqa: BLE001
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"Ошибка распознавания: {exc2.__class__.__name__}: {str(exc2)[:300]}",
+            ) from exc2
     return ReceiptParseResult(receipt=_to_out(r, include_payload=True), method=method, fns_check=fns_check)
 
 

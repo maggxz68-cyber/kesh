@@ -44,7 +44,18 @@ class _SafeLoaderDescriptor:
             if type(exc).__name__ in ("MissingGreenlet", "StatementError"):
                 inst = obj  # instance-level override
                 fallback = [] if getattr(self._attr, "uselist", False) else None
-                inst.__dict__[self._key] = fallback
+                key = self._key
+                if getattr(self._attr, "uselist", False):
+                    # ВАЖНО: для collection-атрибутов нельзя писать "голый" list в
+                    # __dict__ — SQLAlchemy хранит там ActiveCollectionAdapter, и
+                    # запись списка/None ломает ORM ('NoneType' has no attribute
+                    # '_sa_adapter' при ближайшем rollback). Поэтому: если
+                    # коллекция уже была загружена ранее (есть в __dict__) — не
+                    # трогаем её; иначе временно возвращаем [] без записи.
+                    if key in inst.__dict__:
+                        return inst.__dict__[key]
+                    return fallback
+                inst.__dict__[key] = fallback
                 return fallback
             raise
 
