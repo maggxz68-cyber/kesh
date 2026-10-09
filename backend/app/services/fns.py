@@ -101,11 +101,21 @@ def parse_payload(payload: str) -> FnPayload | None:
         return None
     try:
         raw_t = kv["t"]
+        date = None
         if re.fullmatch(r"[0-9a-fA-F]{12}", raw_t):
             type_tag = int(raw_t[:2], 16)          # старший байт 12-hex тега типа
-        else:
+        elif re.fullmatch(r"\d{8}T?\d{6}", raw_t):
+            # t=YYYYMMDDHHMMSS / t=YYYYMMDDTHHMMSS (современные ККТ кладут дату прямо в t)
+            type_tag = 0
+            try:
+                date = datetime.strptime(raw_t.replace("T", ""), "%Y%m%d%H%M%S")
+            except ValueError:
+                pass
+        elif re.fullmatch(r"\d+", raw_t):
             type_tag = int(raw_t)
-        date = None
+        else:
+            logger.warning(f"Неизвестный формат тега t={raw_t!r} — fallback на OCR")
+            return None
         if "dt" in kv:
             dt_v = kv["dt"]
             for fmt_d in ("%Y%m%dT%H%M%S", "%Y%m%d%H%M%S", "%Y%m%d"):
