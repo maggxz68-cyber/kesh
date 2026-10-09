@@ -5,6 +5,8 @@ import uuid as _uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from loguru import logger
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -116,6 +118,31 @@ async def demo_login(request: Request, response: Response, db: DbDep):
     """Вход в демо без пароля: персональная sandbox-копия демо-семьи, TTL 24ч (ТЗ 5.2)."""
     if not settings.demo_mode:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Демо-режим отключён")
+    # Самовосстановление: если эталонная демо-семья отсутствует или все её
+    # пользователи заблокированы/удалены (например, после сбоя миграции или
+    # блокировки супер-админом) — пересоздаём seed-ом (идемпотентен).
+    from app.services.seed import ensure_superadmin, seed_demo_family
+
+    ok_user = (
+        await db.execute(
+            select(User.id)
+            .join(Family, Family.id == User.family_id)
+            .where(
+                Family.is_demo.is_(True), Family.is_sandbox.is_(False),
+                Family.deleted_at.is_(None), Family.is_blocked.is_(False),
+                User.is_active.is_(True), User.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+    ).first()
+    if ok_user is None:
+        try:
+            await ensure_superadmin(db)
+            await seed_demo_family(db)
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001 — seed не должен ломать вход: логируем и идём дальше
+            await db.rollback()
+            logger.error(f"Авто-seed демо-семьи не удался: {exc}", exc_info=True)
     fam, guest = await create_demo_sandbox(db)
     await write_audit(db, action=AuditAction.DEMO_LOGIN, actor_id=str(guest.id),
                       actor_label="demo-guest", target_family_id=fam.id,
