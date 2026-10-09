@@ -5,3 +5,7 @@ __pycache__/
 # Environment and config (common for backend projects)
 .env
 .env.local
+# Local logs & sqlite dev artifacts
+*.log
+*.sqlite3
+backend/uploads/
