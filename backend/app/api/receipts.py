@@ -362,14 +362,18 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
             logger.error(f"Не удалось разобрать QR-payload '{payload[:200]}': {exc}", exc_info=True)
             p = None
         if p is not None:
-            logger.info(f"Сырой QR-код: {payload[:200]}")
-            logger.info(f"Распарсенные данные QR: sum={p.sum2}, fd={p.fd}, fn={p.fn}, fp={p.fp}, date={p.date}")
+            logger.info(f"Сырой QR-код ФНС: {payload[:200]}")
+            logger.info(
+                f"Распарсенные данные QR: sum={p.sum2}, type_tag={p.type_tag}, "
+                f"operation={p.operation_type}, fd={p.fd}, fn={p.fn}, fp={p.fp}, date={p.date}"
+            )
             r.qr_payload_raw = payload[:2000]
-            r.total_amount = p.sum2
+            r.total_amount = p.sum2 if p.sum2 else (r.total_amount or Decimal("0"))
             r.fiscal_document_number = str(p.fd)
             r.fiscal_sign = p.fp
             meta = dict(p.meta)
             meta["fn"] = p.fn
+            meta["operation_type"] = p.operation_type
             if p.receipt_number:
                 r.receipt_number = p.receipt_number[:64]
             if p.date:

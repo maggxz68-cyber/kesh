@@ -13,13 +13,16 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-_QR_TAG_RE = re.compile(r"(?:^|&)t=([0-9a-fA-F]{12})")
+# Типы фискальных документов (Приказ ФНС № ММВ-7-20/538@, tlvTag «т»):
+# приходные чеки — 1..4, возврат прихода — 11..14, расходные — 21..24, возврат расхода — 31..34.
+_INCOME_TAGS = set(range(1, 5)) | set(range(11, 15))
+_EXPENSE_TAGS = set(range(21, 25)) | set(range(31, 35))
 
 
 @dataclass
 class FnPayload:
     type_tag: int = 0          # t: тип фискального документа
-    sum2: Decimal = Decimal("0")  # s: сумма чека коп./руб. (fmt=2 -> копейки? нет: fmt=2 => делим на 100)
+    sum2: Decimal = Decimal("0")  # s: сумма чека в рублях (fmt=2) либо копейках (fmt=3)
     fd: int = 0                # n: номер ФД
     fn: str = ""               # fn: номер ФН
     fp: str = ""               # fp: фискальный признак (10 hex)
@@ -31,6 +34,11 @@ class FnPayload:
     @property
     def fiscal_sign(self) -> str:
         return self.fp
+
+    @property
+    def operation_type(self) -> str:
+        """'income' для приходных ФД, иначе 'expense' (расходный чек — по умолчанию)."""
+        return "income" if self.type_tag in _INCOME_TAGS else "expense"
 
 
 def decode_qr(image_path: str | Path) -> str | None:
@@ -49,24 +57,65 @@ def decode_qr(image_path: str | Path) -> str | None:
     return None
 
 
+def _parse_sum(value: str, fmt: int | None) -> Decimal:
+    """Сумма из параметра s. fmt=2 → рубли с дробью; fmt=3/4 → копейки (целое).
+
+    Без fmt: если значение целое и > 10000 — трактуем как копейки, иначе рубли.
+    Разделитель может быть точкой или запятой.
+    """
+    v = value.strip().replace(",", ".")
+    try:
+        d = Decimal(v)
+    except Exception:  # noqa: BLE001
+        return Decimal("0")
+    if fmt in (3, 4):
+        return d / 100
+    if fmt == 2 or "." in v:
+        return d
+    # fmt отсутствует/неизвестен: целое большое число похоже на копейки
+    if d == d.to_integral_value() and d > 10000:
+        return d / 100
+    return d
+
+
 def parse_payload(payload: str) -> FnPayload | None:
-    """Разбор стандартного TLV-payload QR ФНС."""
-    if not payload or not _QR_TAG_RE.search(payload):
+    """Разбор стандартного TLV-payload QR ФНС.
+
+    Поддерживаются оба распространённых формата:
+      * классический: `t=<12 hex>&s=<сумма коп.>&fn=...&fp=<10hex>&dt=<YYYYMMDD>`
+      * упрощённый (современные ККТ/агрегаторы): `t=1&s=369.99&fn=...&i=...&fp=...&n=1[&dt=...]`
+    """
+    if not payload or "t=" not in payload or "&" not in payload:
         return None
-    parts = dict(re.findall(r"(?:^|&)(&?\w+)=(.*?)$", payload) and [] or [])
     kv: dict[str, str] = {}
     for chunk in payload.split("&"):
         if "=" in chunk:
             k, v = chunk.split("=", 1)
-            kv[k.lstrip("&")] = v
+            kv[k.lstrip("&").strip()] = v.strip()
+    if not kv.get("t"):
+        return None
     try:
+        raw_t = kv["t"]
+        if re.fullmatch(r"[0-9a-fA-F]{12}", raw_t):
+            type_tag = int(raw_t[:2], 16)          # старший байт 12-hex тега типа
+        else:
+            type_tag = int(raw_t)
+        date = None
+        if "dt" in kv:
+            dt_v = kv["dt"]
+            for fmt_d in ("%Y%m%dT%H%M%S", "%Y%m%d%H%M%S", "%Y%m%d"):
+                try:
+                    date = datetime.strptime(dt_v, fmt_d)
+                    break
+                except ValueError:
+                    continue
         p = FnPayload(
-            type_tag=int(kv.get("t", ""), 16) if "t" in kv else 0,
-            sum2=Decimal(kv.get("s", "0")) / 100 if "s" in kv else Decimal("0"),
-            fd=int(kv.get("n", 0)),
+            type_tag=type_tag,
+            sum2=_parse_sum(kv.get("s", "0"), int(kv["fmt"]) if kv.get("fmt", "").isdigit() else None),
+            fd=int(kv.get("n", 0) or 0),
             fn=kv.get("fn", ""),
             fp=kv.get("fp", ""),
-            date=datetime.strptime(kv["dt"], "%Y%m%dT%H%M%S") if "dt" in kv else None,
+            date=date,
             receipt_number=kv.get("i", "").split("&")[0],
             raw=payload,
             meta=kv,
