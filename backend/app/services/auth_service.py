@@ -82,9 +82,35 @@ async def register_family(
 
 
 async def authenticate_user(session: AsyncSession, email: str, password: str) -> User:
-    email = email.strip().lower()
+    identifier = email.strip().lower()
+    # Гибкий вход (ТЗ 4.1/5.2): допускаем ИЛИ email, ИЛИ логин супер-админа
+    # (например "admin"/"1968" без символа @ — браузерная валидация раньше
+    # блокировала такой ввод). Пароли проверяются разными хэшами, подбора нет.
+    if "@" not in identifier:
+        sa = (
+            await session.execute(select(SuperAdmin).where(func.lower(SuperAdmin.login) == identifier))
+        ).scalar_one_or_none()
+        if sa is not None and verify_password(password, sa.password_hash):
+            fam = (
+                await session.execute(
+                    select(Family).where(Family.is_demo.is_(True), Family.is_sandbox.is_(False))
+                    .order_by(Family.created_at.asc())
+                )
+            ).scalars().first()
+            if fam is not None:
+                demo_owner = (
+                    await session.execute(
+                        select(User).where(User.family_id == fam.id, User.deleted_at.is_(None))
+                        .order_by(User.created_at.asc())
+                    )
+                ).scalars().first()
+                if demo_owner is not None:
+                    sa.last_login_at = datetime.now(timezone.utc)
+                    demo_owner.last_login_at = sa.last_login_at
+                    return demo_owner
+
     user = (
-        await session.execute(select(User).where(func.lower(User.email) == email))
+        await session.execute(select(User).where(func.lower(User.email) == identifier))
     ).scalar_one_or_none()
     if user is None or user.deleted_at is not None or not verify_password(password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный email или пароль")

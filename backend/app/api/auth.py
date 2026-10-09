@@ -136,6 +136,7 @@ async def demo_login(request: Request, response: Response, db: DbDep):
         )
     ).first()
     if ok_user is None:
+        logger.info("Демо-вход: активный пользователь демо-семьи не найден — запускаю авто-seed (идемпотентен)")
         try:
             await ensure_superadmin(db)
             await seed_demo_family(db)
@@ -143,7 +144,13 @@ async def demo_login(request: Request, response: Response, db: DbDep):
         except Exception as exc:  # noqa: BLE001 — seed не должен ломать вход: логируем и идём дальше
             await db.rollback()
             logger.error(f"Авто-seed демо-семьи не удался: {exc}", exc_info=True)
+    else:
+        logger.info(f"Демо-вход: эталонная демо-семья найдена, активный пользователь: {ok_user[0]}")
     fam, guest = await create_demo_sandbox(db)
+    logger.info(
+        f"Демо-вход: создана sandbox-семья {fam.id} (guest={guest.email}, "
+        f"is_active={guest.is_active}, expires_at={fam.expires_at})"
+    )
     await write_audit(db, action=AuditAction.DEMO_LOGIN, actor_id=str(guest.id),
                       actor_label="demo-guest", target_family_id=fam.id,
                       ip=request.client.host if request.client else None,
