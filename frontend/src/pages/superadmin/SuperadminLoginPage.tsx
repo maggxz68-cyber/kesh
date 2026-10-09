@@ -22,7 +22,7 @@ export default function SuperadminLoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4">
+    <div className="dark flex min-h-screen items-center justify-center bg-slate-900 p-4">
       <Card className="w-full max-w-sm border-slate-700 bg-slate-800 p-6 text-slate-100 sm:p-8">
         <div className="flex items-center gap-2">
           <ShieldCheck className="text-red-400" />

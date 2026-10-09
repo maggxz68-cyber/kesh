@@ -7,11 +7,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Типы фискальных документов (Приказ ФНС № ММВ-7-20/538@, tlvTag «т»):
 # приходные чеки — 1..4, возврат прихода — 11..14, расходные — 21..24, возврат расхода — 31..34.
@@ -85,8 +88,10 @@ def parse_payload(payload: str) -> FnPayload | None:
       * классический: `t=<12 hex>&s=<сумма коп.>&fn=...&fp=<10hex>&dt=<YYYYMMDD>`
       * упрощённый (современные ККТ/агрегаторы): `t=1&s=369.99&fn=...&i=...&fp=...&n=1[&dt=...]`
     """
-    if not payload or "t=" not in payload or "&" not in payload:
+    if not payload or "&" not in payload or "t=" not in payload or "s=" not in payload:
+        logger.warning(f"QR-код не похож на ФНС (нет t=&...): {payload[:100]!r} — fallback на OCR")
         return None
+    logger.info(f"Сырой QR-код ФНС: {payload[:200]}")
     kv: dict[str, str] = {}
     for chunk in payload.split("&"):
         if "=" in chunk:
@@ -96,11 +101,26 @@ def parse_payload(payload: str) -> FnPayload | None:
         return None
     try:
         raw_t = kv["t"]
+        date = None
         if re.fullmatch(r"[0-9a-fA-F]{12}", raw_t):
             type_tag = int(raw_t[:2], 16)          # старший байт 12-hex тега типа
-        else:
+        elif re.fullmatch(r"\d{8}T?\d{4,6}", raw_t):
+            # t=YYYYMMDDHHMM / t=YYYYMMDDTHHMM / t=YYYYMMDDHHMMSS / t=YYYYMMDDTHHMMSS
+            # Современные ККТ часто выдают формат без секунд (t=20260926T0834)
+            type_tag = 0
+            clean_t = raw_t.replace("T", "")
+            try:
+                if len(clean_t) == 12:
+                    date = datetime.strptime(clean_t, "%Y%m%d%H%M")
+                elif len(clean_t) == 14:
+                    date = datetime.strptime(clean_t, "%Y%m%d%H%M%S")
+            except ValueError:
+                pass
+        elif re.fullmatch(r"\d+", raw_t):
             type_tag = int(raw_t)
-        date = None
+        else:
+            logger.warning(f"Неизвестный формат тега t={raw_t!r} — fallback на OCR")
+            return None
         if "dt" in kv:
             dt_v = kv["dt"]
             for fmt_d in ("%Y%m%dT%H%M%S", "%Y%m%d%H%M%S", "%Y%m%d"):

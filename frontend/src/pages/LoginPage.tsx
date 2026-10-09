@@ -9,10 +9,24 @@ import { useAuth } from '../store/auth';
 import { Button, Input, Card } from '../components/ui';
 
 const schema = z.object({
-  email: z.string().email('Некорректный email'),
-  password: z.string().min(6, 'Минимум 6 символов'),
+  // Принимаем любую непустую строку: вход может быть по email ИЛИ по логину (admin).
+  // Жёсткая проверка на "@" блокировала браузерную/zod-валидацию — убрана.
+  email: z.string().min(1, 'Введите email или логин'),
+  password: z.string().min(1, 'Введите пароль'),
 });
 type Form = z.infer<typeof schema>;
+
+// Понятные сообщения об ошибках демо-входа вместо «ничего не происходит»
+function demoErrorMessage(e: unknown): string {
+  if (e && typeof e === 'object' && 'status' in e) {
+    const st = (e as { status: number }).status;
+    if (st === 404) return 'Демо-режим отключён на сервере (DEMO_MODE=false)';
+    if (st === 429) return 'Слишком много попыток — подождите минуту и повторите';
+    if (st >= 500) return 'Ошибка сервера при создании демо-песочницы. Попробуйте позже';
+  }
+  if (e instanceof TypeError) return 'Сервер недоступен. Проверьте подключение и обновите страницу';
+  return e instanceof Error ? e.message : 'Не удалось войти в демо';
+}
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +58,7 @@ export default function LoginPage() {
       await load();
       navigate('/');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не удалось войти в демо');
+      setError(demoErrorMessage(e));
     } finally {
       setDemoLoading(false);
     }
@@ -76,10 +90,10 @@ export default function LoginPage() {
           <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-3">
+        <form onSubmit={onSubmit} noValidate className="space-y-3">
           <div>
-            <label className="mb-1 block text-sm font-medium">Email</label>
-            <Input type="email" autoComplete="email" placeholder="you@example.com" {...register('email')} />
+            <label className="mb-1 block text-sm font-medium">Email или логин</label>
+            <Input type="text" inputMode="email" autoComplete="username" placeholder="you@example.com" {...register('email')} />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Пароль</label>

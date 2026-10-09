@@ -53,6 +53,17 @@ async def get_current_user(request: Request, db: DbDep) -> CurrentUser:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Пользователь не найден или заблокирован")
     family = await db.get(Family, user.family_id)
     if family is None or family.deleted_at is not None:
+        # Самоизлечение демо-сессии (ТЗ 5.2): cookie гостя sandbox-семьи может
+        # пережить удаление песочницы планировщиком (TTL 24ч) — frontend при
+        # этом зацикливался на «Пользователь не найден». Возвращаем 401 с
+        # явной причиной, чтобы клиент корректно перенаправил на /login,
+        # где кнопка «Войти в демо» создаст новую песочницу.
+        if bool(payload.get("is_demo")):
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Демо-сессия истекла — войдите в демо заново",
+                headers={"X-Demo-Expired": "1"},
+            )
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Семья удалена")
     if family.is_blocked:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Семья заблокирована администратором")

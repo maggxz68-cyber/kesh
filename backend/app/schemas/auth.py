@@ -1,6 +1,8 @@
 """Pydantic-схемы аутентификации (ТЗ 5, 9)."""
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 PASSWORD_MIN = 8
@@ -16,8 +18,23 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    # Гибкое поле: допускает email ИЛИ короткий логин (например "admin").
+    # Жёсткая EmailStr-валидация блокировала вход по логину (422 без @).
+    email: str = Field(min_length=1, max_length=320)
+    # ОБЯЗАТЕЛЬНОЕ поле пароля. Его отсутствие ломало POST /auth/login с 500:
+    # AttributeError: 'LoginRequest' object has no attribute 'password'
     password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def _lenient_identifier(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Введите email или логин")
+        # если строка похожа на email — проверяем базовую форму; иначе считаем логином
+        if "@" in v and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v):
+            raise ValueError("Некорректный email")
+        return v
 
 
 class SuperadminLoginRequest(BaseModel):

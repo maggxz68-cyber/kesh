@@ -14,7 +14,9 @@ interface Summary {
   income: number; expense: number; balance: number;
   cash_income?: number; cash_expense?: number; card_income?: number; card_expense?: number;
 }
-interface ByCat { category_name: string; color: string | null; total: number }
+// amount — поле, которое реально возвращает backend (services/reports.by_category);
+// total оставлен как опциональный fallback на случай старого контракта.
+interface ByCat { category_name: string; color: string | null; amount: number; total?: number }
 interface ByMonth { month: string; income: number; expense: number }
 
 const PERIODS = [
@@ -47,7 +49,12 @@ export default function DashboardPage() {
   });
 
   const s = summary.data;
-  const pieData = (byCategory.data?.items ?? []).map((c) => ({ name: c.category_name, value: c.total }));
+  // FIX: backend возвращает поле `amount`, а не `total` — из-за этого value был undefined,
+  // pieData получался пустым и дашборд показывал «Нет расходов за период» при наличии данных.
+  const catItems = byCategory.data?.items ?? [];
+  console.log('Category data:', byCategory.data);
+  const pieData = catItems.map((c) => ({ name: c.category_name, value: Number(c.amount ?? c.total ?? 0) }))
+    .filter((p) => p.value > 0);
   const lineData = (byMonth.data?.items ?? []).map((m) => ({
     ...m,
     net: m.income - m.expense,
@@ -115,7 +122,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95} label={(e: any) => `${e.name}: ${Math.round(e.percent * 100)}%`}>
-                  {(byCategory.data?.items ?? []).map((c, i) => (
+                  {catItems.map((c, i) => (
                     <Cell key={i} fill={c.color ?? '#6366f1'} />
                   ))}
                 </Pie>

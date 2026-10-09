@@ -46,7 +46,7 @@ export default function SuperadminLayout({ children }: { children: ReactNode }) 
   );
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100">
+    <div className="dark flex min-h-screen bg-slate-950 text-slate-100">
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-900 md:flex">
         <div className="flex h-14 items-center gap-2 border-b border-slate-800 px-4 font-bold">
           <ShieldCheck className="text-red-500" /> Панель платформы
@@ -75,7 +75,12 @@ export default function SuperadminLayout({ children }: { children: ReactNode }) 
           <span className="font-semibold">Superadmin</span>
           <span className="ml-auto rounded bg-red-900/50 px-2 py-1 text-xs text-red-300">admin</span>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 p-4">{children}</main>
+        {/* FIX стилей админки: панель всегда тёмная (bg-slate-950/text-slate-100), но общие
+            Card/Input берут цвета из глобальной темы ('dark' на <html>). Если у пользователя
+            светлая тема — они рендерятся белыми с тёмным текстом поверх тёмного фона, и часть
+            текста становится нечитаемой. Класс "dark" здесь локально включает тёмные варианты
+            Tailwind для всего содержимого панели независимо от глобальной темы. */}
+        <main className="dark mx-auto w-full max-w-6xl flex-1 p-4">{children}</main>
       </div>
     </div>
   );
