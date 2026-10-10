@@ -214,7 +214,9 @@ async def seed_demo_family(db: AsyncSession) -> Family:
     rng = _rng()
     fam = await _get_or_create_family(db, "Семья Ивановых", is_demo=True)
 
-    # Пользователи
+    # Пользователи (самовосстановление: если демо-пользователь «потерялся» в другой
+    # семье, удалён или заблокирован — возвращаем его в эталонную демо-семью и
+    # разблокируем; иначе /auth/demo-login падал с «Пользователь не найден или заблокирован»)
     users: list[User] = []
     for email, (name, role) in DEMO_EMAILS.items():
         u = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
@@ -225,8 +227,31 @@ async def seed_demo_family(db: AsyncSession) -> Family:
             )
             db.add(u)
             await db.flush()
+            logger.info(f"seed: создан демо-пользователь {email} в семье {fam.name}")
+        else:
+            restored = False
+            if u.family_id != fam.id:
+                u.family_id = fam.id
+                restored = True
+            if not u.is_active:
+                u.is_active = True
+                restored = True
+            if u.deleted_at is not None:
+                u.deleted_at = None
+                restored = True
+            if restored:
+                logger.warning(f"seed: восстановлен демо-пользователь {email} (перенесён в демо-семью / разблокирован)")
         users.append(u)
     ivan, maria, alexey = users
+
+    # Эталонная демо-семья не должна оставаться заблокированной/удалённой
+    if fam.is_blocked:
+        logger.warning("seed: эталонная демо-семья была заблокирована — разблокируем")
+        fam.is_blocked = False
+        fam.blocked_reason = None
+    if fam.deleted_at is not None:
+        logger.warning("seed: эталонная демо-семья была помечена удалённой — восстанавливаем")
+        fam.deleted_at = None
 
     # Категории
     cats = await _ensure_categories(db, fam.id)

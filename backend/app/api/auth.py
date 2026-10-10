@@ -146,6 +146,23 @@ async def demo_login(request: Request, response: Response, db: DbDep):
             logger.error(f"Авто-seed демо-семьи не удался: {exc}", exc_info=True)
     else:
         logger.info(f"Демо-вход: эталонная демо-семья найдена, активный пользователь: {ok_user[0]}")
+
+    # Разблокировка эталонной демо-семьи, если она заблокирована супер-админом:
+    # без этого sandbox создаётся, но каждый последующий запрос падал с
+    # «Пользователь не найден или заблокирован» / «Семья заблокирована администратором».
+    ref = (
+        await db.execute(
+            select(Family).where(
+                Family.is_demo.is_(True), Family.is_sandbox.is_(False), Family.deleted_at.is_(None)
+            ).limit(1)
+        )
+    ).scalars().first()
+    if ref is not None and ref.is_blocked:
+        logger.warning("demo-login: эталонная демо-семья заблокирована — разблокируем для входа гостей")
+        ref.is_blocked = False
+        ref.blocked_reason = None
+        await db.commit()
+
     fam, guest = await create_demo_sandbox(db)
     logger.info(
         f"Демо-вход: создана sandbox-семья {fam.id} (guest={guest.email}, "
