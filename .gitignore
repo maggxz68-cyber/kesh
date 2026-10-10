@@ -1,2 +1,2 @@
 # TypeScript build info
-*.tsbuildinfo
+*.tsbuildinfo__pycache__/

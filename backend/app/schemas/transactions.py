@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, model_validator
 
 from app.models.enums import TransactionType
 from app.schemas.categories import TagOut
@@ -47,7 +47,7 @@ class TransactionCreate(ORMBase):
     target_account_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
     counterparty_id: uuid.UUID | None = None
-    occurred_at: datetime | None = None
+    occurred_at: datetime | None = Field(default=None, validation_alias=AliasChoices("occurred_at", "date"))
     comment: str | None = Field(default=None, max_length=2000)
     tag_ids: list[uuid.UUID] = Field(default_factory=list)
     receipt_id: uuid.UUID | None = None
@@ -71,7 +71,7 @@ class TransactionUpdate(ORMBase):
     target_account_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
     counterparty_id: uuid.UUID | None = None
-    occurred_at: datetime | None = None
+    occurred_at: datetime | None = Field(default=None, validation_alias=AliasChoices("occurred_at", "date"))
     comment: str | None = None
     tag_ids: list[uuid.UUID] | None = None
 

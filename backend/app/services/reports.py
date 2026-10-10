@@ -150,11 +150,14 @@ async def by_category(
             {
                 "category_id": cid,
                 "category_name": name,
+                "name": name,  # алиас для фронтенда (DashboardPage/CategoryReport)
                 "kind": str(ttype if ttype else ckind),
                 "color": color,
                 "icon": icon,
                 "amount": amount,
+                "total": float(amount),  # алиас: фронт ожидает поле total (pie dataKey)
                 "share": round(share, 4),
+                "percent": round(share * 100, 1),
                 "count": cnt,
             }
         )

@@ -34,6 +34,18 @@ from app.core.security import limiter
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    # 🔥 АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ДЕМО-ДАННЫХ ПРИ КАЖДОМ ЗАПУСКЕ (НАВСЕГДА).
+    # Идемпотентно: если демо-семья/пользователь demo@example.com отсутствуют,
+    # заблокированы или «потеряны» — создаются/восстанавливаются до готовности
+    # приложения принимать запросы. Ошибки сидирования не роняют старт.
+    try:
+        from app.services.seed import ensure_demo_data
+
+        ensure_demo_data()
+        logger.info("✅ Демо-данные созданы/обновлены")
+    except Exception as e:  # noqa: BLE001 - seed не должен блокировать запуск
+        logger.error(f"⚠️ Ошибка при создании демо-данных: {e}", exc_info=True)
+
     logger.info(f"Starting {settings.app_name} env={settings.app_env}")
     yield
     logger.info("Shutting down")
