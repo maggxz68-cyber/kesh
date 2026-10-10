@@ -97,6 +97,7 @@ def parse_payload(payload: str) -> FnPayload | None:
         if "=" in chunk:
             k, v = chunk.split("=", 1)
             kv[k.lstrip("&").strip()] = v.strip()
+    logger.info(f"Распарсенные параметры: {kv}")
     if not kv.get("t"):
         return None
     try:
