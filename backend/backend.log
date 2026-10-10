@@ -6,3 +6,17 @@
 2026-10-03 10:24:50.317 | INFO     | __main__:main:50 - seed OK: family=Семья Ивановых id=2950b005-945f-4e20-9cb6-84e64b8a4123
 2026-10-03 10:24:57.487 | INFO     | app.main:lifespan:37 - Starting Family Finance Tracker env=development
 2026-10-03 10:25:19.199 | INFO     | app.main:lifespan:37 - Starting Family Finance Tracker env=development
+2026-10-10 05:53:35.848 | INFO     | app.services.seed:ensure_superadmin:99 - seed: создан супер-админ 'admin'
+2026-10-10 05:53:36.083 | INFO     | app.services.seed:seed_demo_family:303 - seed: создан демо-пользователь demo@example.com в семье Семья Ивановых
+2026-10-10 05:53:36.287 | INFO     | app.services.seed:seed_demo_family:303 - seed: создан демо-пользователь wife@example.com в семье Семья Ивановых
+2026-10-10 05:53:36.494 | INFO     | app.services.seed:seed_demo_family:303 - seed: создан демо-пользователь son@example.com в семье Семья Ивановых
+2026-10-10 05:53:36.617 | INFO     | app.services.seed:seed_demo_family:456 - seed: демо-транзакций создано: 161
+2026-10-10 05:53:36.776 | INFO     | app.services.seed:seed_demo_family:460 - seed: демо-чеков создано: 10
+2026-10-10 05:53:36.803 | INFO     | app.services.seed:assign_missing_categories:190 - seed: привязано категорий к транзакциям без них: 8
+2026-10-10 05:53:36.822 | INFO     | app.services.seed:run_seed:509 - seed завершён: демо-семья 'Семья Ивановых' id=874985da-e8d6-4a0f-85e3-00ef342b03fb
+2026-10-10 05:53:36.823 | INFO     | app.services.seed:ensure_demo_data:559 - ✅ Демо-данные созданы/обновлены (авто-seed при старте)
+2026-10-10 05:53:36.823 | INFO     | app.main:lifespan:45 - ✅ Демо-данные созданы/обновлены
+2026-10-10 05:53:36.824 | INFO     | app.main:lifespan:49 - Starting Family Finance Tracker env=development
+2026-10-10 05:53:36.831 | INFO     | app.api.auth:demo_login:148 - Демо-вход: эталонная демо-семья найдена, активный пользователь: 6d43074b-017c-4f43-9cef-7057b0591a3f
+2026-10-10 05:53:37.359 | INFO     | app.api.auth:demo_login:167 - Демо-вход: создана sandbox-семья 5cc3ae3c-779a-4d58-b146-864a4dec6378 (guest=sandbox-1633eda2f72d@demo.invalid, is_active=True, expires_at=2026-10-11 05:53:36.835433+00:00)
+2026-10-10 05:53:37.386 | INFO     | app.main:lifespan:51 - Shutting down
