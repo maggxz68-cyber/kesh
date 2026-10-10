@@ -118,6 +118,78 @@ async def _ensure_categories(db: AsyncSession, family_id: _uuid.UUID) -> dict[tu
     return await ensure_global_system_categories(db)
 
 
+# Эвристическая привязка существующих «безкатегорийных» транзакций к системному
+# справочнику по комментарию/контрагенту (используется и в fix_categories.py).
+_COMMENT_CATEGORY_HINTS: list[tuple[tuple[str, ...], str, str]] = [
+    (("зарплат", "аванс", "преми"), "Зарплата", "income"),
+    (("фриланс", "проект", "заказ"), "Фриланс", "income"),
+    (("процент", "вклад", "депозит"), "Проценты", "income"),
+    (("вернул", "возврат долга", "долг"), "Возврат долга", "income"),
+    (("подар",), "Подарки", "income"),
+    (("продукт", "магазин", "пятерочка", "магнит", "перекресток", "лента", "вкусвил", "покупк", "ужин на недел", "еда"), "Продукты", "expense"),
+    (("кафе", "ресторан", "кофе", "обед", "ужин"), "Кафе и рестораны", "expense"),
+    (("такси", "метро", "автобус", "транспорт", "поездк", "билет"), "Транспорт", "expense"),
+    (("бензин", "заправк", "лукойл", "газпром", "авто", "шин"), "Автомобиль", "expense"),
+    (("жкх", "коммунал", "квитанц", "электричеств", "вода", "отоплен"), "Коммунальные", "expense"),
+    (("интернет", "связь", "мобильн", "телефон"), "Связь и интернет", "expense"),
+    (("врач", "стоматолог", "приём", "клиник", "здоровь", "мрт", "узи"), "Здоровье", "expense"),
+    (("аптек", "лекарств", "таблетк"), "Лекарства", "expense"),
+    (("одежд", "куртк", "обув", "рубашк"), "Одежда", "expense"),
+    (("кино", "концерт", "развлеч", "игр"), "Развлечения", "expense"),
+    (("курс", "образован", "школ", "секц", "репетитор"), "Образование", "expense"),
+    (("детск", "дети", "садик"), "Дети", "expense"),
+    (("отел", "путешеств", "отпуск", "самолет"), "Путешествия", "expense"),
+    (("парикмахерск", "косметик", "салон", "красот"), "Красота", "expense"),
+    (("подар",), "Подарки", "expense"),
+]
+
+
+async def assign_missing_categories(
+    db: AsyncSession, *, family_ids: list[_uuid.UUID] | None = None
+) -> int:
+    """Привязывает системные категории к транзакциям с category_id IS NULL.
+
+    Идемпотентно: трогает только строки без категории. Возвращает число обновлений.
+    Используется seed-ом (самовосстановление демо-данных) и скриптом
+    `python -m app.services.fix_categories`.
+    """
+    cats = await _ensure_categories(db, _uuid.uuid4())  # гарантирует справочник
+    if not cats:
+        return 0
+    stmt = select(Transaction).where(Transaction.category_id.is_(None))
+    if family_ids:
+        stmt = stmt.where(Transaction.family_id.in_(family_ids))
+    txs = list((await db.execute(stmt)).scalars().all())
+    if not txs:
+        return 0
+
+    default_by_kind = {
+        ("income",): cats.get(("Прочие доходы", "income")),
+        ("expense",): cats.get(("Прочие расходы", "expense")),
+    }
+    fixed = 0
+    for t in txs:
+        kind = "income" if t.type == TransactionType.INCOME else "expense"
+        hay = " ".join(filter(None, [t.comment or "", (t.counterparty.name if t.counterparty else "")])).lower()
+        cat = None
+        for keywords, cname, ckind in _COMMENT_CATEGORY_HINTS:
+            if ckind != kind:
+                continue
+            if any(k in hay for k in keywords):
+                cat = cats.get((cname, ckind))
+                if cat is not None:
+                    break
+        if cat is None:
+            cat = default_by_kind[(kind,)]
+        if cat is not None:
+            t.category_id = cat.id
+            fixed += 1
+    if fixed:
+        await db.flush()
+        logger.info(f"seed: привязано категорий к транзакциям без них: {fixed}")
+    return fixed
+
+
 def _make_receipt_image(store: str, total: float) -> bytes:
     """PNG-заглушка чека (рисуем bitmap вручную через zlib, без Pillow)."""
     import struct
@@ -409,6 +481,12 @@ async def seed_demo_family(db: AsyncSession) -> Family:
                 limit_amount=limit, period_start=month_start, period_end=month_start.replace(day=calendar_last_day(month_start)), notify_on_overrun=True,
             ))
     await db.flush()
+
+    # Самовосстановление: если в БД остались транзакции без категории (например,
+    # созданные старым seed-ом до привязки category_id) — привязать системные
+    # категории по комментарию/контрагенту. Иначе фронт показывает «Без категории»,
+    # а дашборд — «Нет расходов за период».
+    await assign_missing_categories(db, family_ids=[fam.id])
 
     # Пересчёт балансов всех счетов демо-семьи (источник истины — проводки)
     all_acc_ids = [a.id for a in (await db.execute(select(Account).where(Account.family_id == fam.id))).scalars().all()]
