@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import random
 import uuid as _uuid
 from datetime import date, datetime, timedelta, timezone
@@ -506,3 +507,55 @@ async def run_seed(db: AsyncSession) -> None:
     fam = await seed_demo_family(db)
     await db.commit()
     logger.info(f"seed завершён: демо-семья '{fam.name}' id={fam.id}")
+
+
+async def _ensure_demo_data_async() -> None:
+    """Автосоздание/самовосстановление демо-данных (идемпотентно).
+
+    Создаёт супер-админа, эталонную демо-семью «Семья Ивановых» с пользователями
+    (demo@example.com / demo1234 — владелец), счетами, категориями, транзакциями
+    (все с category_id), чеками и бюджетами. Если данные уже есть — только
+    чинит повреждённое состояние (заблокированная семья, деактивированный или
+    «потерянный» в другой семье демо-пользователь, транзакции без категорий).
+    """
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as db:
+        await run_seed(db)
+
+
+def ensure_demo_data() -> None:
+    """Синхронная обёртка для вызова из lifespan startup.
+
+    Никогда не роняет приложение: любые ошибки сидирования логируются, но старт
+    продолжается (например, при параллельном запуске нескольких воркеров или
+    недоступной БД в момент старта).
+    """
+    try:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # цикла нет (обычный startup FastAPI до serve) — можно safe asyncio.run
+            asyncio.run(_ensure_demo_data_async())
+        else:  # pragma: no cover - защита на случай вызова из активного цикла
+            import threading
+
+            done: threading.Event = threading.Event()
+            err: list[BaseException] = []
+
+            def _runner() -> None:
+                try:
+                    asyncio.run(_ensure_demo_data_async())
+                except BaseException as exc:  # noqa: BLE001
+                    err.append(exc)
+                finally:
+                    done.set()
+
+            t = threading.Thread(target=_runner, daemon=True)
+            t.start()
+            done.wait(timeout=120)
+            if err:
+                raise err[0]
+        logger.info("✅ Демо-данные созданы/обновлены (авто-seed при старте)")
+    except Exception as e:  # noqa: BLE001 - seed не должен ронять приложение
+        logger.error(f"⚠️ Ошибка при создании демо-данных: {e}", exc_info=True)
