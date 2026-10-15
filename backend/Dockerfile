@@ -48,6 +48,7 @@ RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /usr/sbin/nologin ap
 WORKDIR /app
 
 COPY --from=builder /wheels /wheels
+RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-index --find-links=/wheels /wheels/*.whl && rm -rf /wheels
 
 COPY alembic.ini ./
@@ -56,7 +57,7 @@ COPY app ./app
 COPY scripts ./scripts
 
 # Директории данных/логов с правами appuser
-RUN mkdir -p /data/receipts /logs && chown -R appuser:appuser /app /data /logs
+RUN mkdir -p /data/receipts /data/backups /logs && chown -R appuser:appuser /app /data /logs
 
 USER appuser
 
@@ -66,4 +67,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)" || exit 1
 
 # entrypoint: ждёт БД, накатывает миграции, запускает uvicorn
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --loop asyncio --workers 1"]

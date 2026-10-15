@@ -2,7 +2,7 @@
 import { ReactNode, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, ArrowLeftRight, Camera, Wallet, Tags, Target, BarChart3, Users,
+  LayoutDashboard, ArrowLeftRight, Camera, Wallet, Tags, Target, BarChart3, TrendingUp, CreditCard, Users,
   Settings, Moon, Sun, Menu, X, PanelTop, LogOut, ChevronLeft, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../store/auth';
@@ -17,6 +17,8 @@ const NAV = [
   { to: '/categories', label: 'Категории', icon: Tags },
   { to: '/budgets', label: 'Бюджеты', icon: Target },
   { to: '/reports', label: 'Отчёты', icon: BarChart3 },
+  { to: '/analytics', label: 'Аналитика', icon: TrendingUp },
+  { to: '/subscriptions', label: 'Подписки', icon: CreditCard },
   { to: '/family', label: 'Семья', icon: Users },
   { to: '/settings', label: 'Настройки', icon: Settings },
 ];

@@ -1,17 +1,19 @@
 """API панели супер-админа (ТЗ 4.1, 9). Все маршруты защищены токеном
 superadmin_access (отдельный claim is_superadmin)."""
 from __future__ import annotations
+from uuid import UUID
 
 import uuid as _uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.deps import CSRF_COOKIE, DbDep, get_current_superadmin
 from app.core.security import check_csrf
-from app.models.family import SuperAdmin
+from app.models.family import Family, SuperAdmin
+from app.models.family import Family
 from app.schemas.superadmin import (
     BlockRequest,
     DeleteRequest,
@@ -179,3 +181,61 @@ async def delete_system_category(sa: SA, db: DbDep, request: Request, cat_id: _u
     _csrf(request)
     await svc.delete_system_category(db, cat_id)
     return OkResponse(message="Категория удалена")
+
+# --- Импорты для новых функций ---
+import os
+from app.services.admin_service import reset_family_to_default, create_database_backup, restore_database_backup, BACKUP_DIR
+
+@router.post("/families/{family_id}/reset")
+async def reset_family(
+    family_id: UUID, 
+    db: DbDep, 
+    current_superadmin: SuperAdmin = Depends(get_current_superadmin)
+):
+    """Сброс конкретной семьи до заводских настроек (очистка + шаблон)."""
+    # Проверяем, демо ли это семья
+    family = await db.get(Family, family_id)
+    if not family:
+        raise HTTPException(status_code=404, detail="Семья не найдена")
+    
+    await reset_family_to_default(db, family_id, is_demo=family.is_demo)
+    
+    return {"message": f"Семья {family.name} успешно сброшена до заводских настроек"}
+
+
+@router.post("/system/backup")
+async def trigger_backup(current_superadmin: SuperAdmin = Depends(get_current_superadmin)):
+    """Создать полный дамп базы данных."""
+    try:
+        filename = await create_database_backup()
+        return {"message": "Бекап успешно создан", "filename": filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/system/backups")
+async def list_backups(current_superadmin: SuperAdmin = Depends(get_current_superadmin)):
+    """Получить список доступных файлов бекапа."""
+    try:
+        files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.sql')]
+        return {"backups": sorted(files, reverse=True)}
+    except Exception:
+        return {"backups": []}
+
+
+@router.post("/system/restore/{filename}")
+async def trigger_restore(
+    filename: str, 
+    current_superadmin: SuperAdmin = Depends(get_current_superadmin)
+):
+    """Восстановить базу данных из выбранного бекапа. ВНИМАНИЕ: Это перезапишет все текущие данные!"""
+    if not filename.endswith('.sql'):
+        raise HTTPException(status_code=400, detail="Неверный формат файла")
+    
+    try:
+        await restore_database_backup(filename)
+        return {"message": f"База данных успешно восстановлена из {filename}. Требуется перезапуск backend."}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Файл бекапа не найден")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

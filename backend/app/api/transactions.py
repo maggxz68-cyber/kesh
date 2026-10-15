@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import uuid
+import logging
+logger = logging.getLogger(__name__)
 from datetime import date, datetime, time, timezone
 from typing import Annotated
 
@@ -27,6 +29,11 @@ from app.schemas.transactions import (
     TransferCreate,
 )
 from app.services.balances import affected_account_ids, mark_accounts_dirty
+from decimal import Decimal
+from typing import List
+from pydantic import BaseModel
+from fastapi import UploadFile, File
+from app.services import import_service
 
 async def _reload(db, obj):
     """Async-safe перезагрузка объекта со связями (lazy=selectin) после flush."""
@@ -39,7 +46,7 @@ async def _reload(db, obj):
 
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
-CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
+CurrentUser = Annotated[CurrentUser, Depends(get_current_user)]
 
 SORTABLE = {
     "occurred_at": Transaction.occurred_at,
@@ -148,7 +155,7 @@ async def _load_full(db: DbDep, tx_id: uuid.UUID) -> Transaction:
 @router.get("", response_model=Page[dict])
 async def list_transactions(
     db: DbDep,
-    current: CurrentUserDep,
+    current: CurrentUser,
     page: int = Query(1, ge=1),
     per_page: int = Query(
         50, ge=1, le=500, alias="limit", description="Размер страницы (limit)"
@@ -222,7 +229,7 @@ async def list_transactions(
 
 
 @router.get("/{tx_id}", response_model=dict)
-async def get_transaction(tx_id: str, db: DbDep, current: CurrentUserDep) -> dict:
+async def get_transaction(tx_id: str, db: DbDep, current: CurrentUser) -> dict:
     tx = await _load_full(db, parse_uuid(tx_id))
     if tx is None or tx.family_id != current.family_id or tx.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Транзакция не найдена")
@@ -230,7 +237,7 @@ async def get_transaction(tx_id: str, db: DbDep, current: CurrentUserDep) -> dic
 
 
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def create_transaction(body: TransactionCreate, db: DbDep, current: CurrentUserDep) -> dict:
+async def create_transaction(body: TransactionCreate, db: DbDep, current: CurrentUser) -> dict:
     await _validate_refs(db, current, body)
     tx = Transaction(
         family_id=current.family_id,
@@ -261,7 +268,7 @@ async def create_transaction(body: TransactionCreate, db: DbDep, current: Curren
 
 
 @router.post("/bulk-delete", response_model=BulkResult)
-async def bulk_delete(body: BulkIds, db: DbDep, current: CurrentUserDep) -> BulkResult:
+async def bulk_delete(body: BulkIds, db: DbDep, current: CurrentUser) -> BulkResult:
     affected = 0
     now = datetime.now(timezone.utc)
     for tid in body.ids:
@@ -278,7 +285,7 @@ async def bulk_delete(body: BulkIds, db: DbDep, current: CurrentUserDep) -> Bulk
 
 
 @router.patch("/{tx_id}", response_model=dict)
-async def update_transaction(tx_id: str, body: TransactionUpdate, db: DbDep, current: CurrentUserDep) -> dict:
+async def update_transaction(tx_id: str, body: TransactionUpdate, db: DbDep, current: CurrentUser) -> dict:
     tx = await _load_full(db, parse_uuid(tx_id))
     if tx is None or tx.family_id != current.family_id or tx.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Транзакция не найдена")
@@ -307,7 +314,7 @@ async def update_transaction(tx_id: str, body: TransactionUpdate, db: DbDep, cur
 
 
 @router.delete("/{tx_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-async def delete_transaction(tx_id: str, db: DbDep, current: CurrentUserDep) -> None:
+async def delete_transaction(tx_id: str, db: DbDep, current: CurrentUser) -> None:
     tx = await _load_full(db, parse_uuid(tx_id))
     if tx is None or tx.family_id != current.family_id or tx.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Транзакция не найдена")
@@ -323,7 +330,7 @@ async def delete_transaction(tx_id: str, db: DbDep, current: CurrentUserDep) -> 
 
 
 @router.get("/transfers/list", response_model=list[dict])
-async def list_transfers(db: DbDep, current: CurrentUserDep, limit: int = Query(100, le=500)) -> list[dict]:
+async def list_transfers(db: DbDep, current: CurrentUser, limit: int = Query(100, le=500)) -> list[dict]:
     stmt = (
         select(Transaction)
         .where(
@@ -341,7 +348,7 @@ transfer_router = APIRouter(dependencies=[Depends(csrf_guard)])
 
 
 @transfer_router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def create_transfer(body: TransferCreate, db: DbDep, current: CurrentUserDep) -> dict:
+async def create_transfer(body: TransferCreate, db: DbDep, current: CurrentUser) -> dict:
     fam = current.family_id
     ids = {body.from_account_id, body.to_account_id}
     n = (await db.execute(select(func.count(Account.id)).where(Account.id.in_(ids), Account.family_id == fam))).scalar_one()
@@ -363,3 +370,87 @@ async def create_transfer(body: TransferCreate, db: DbDep, current: CurrentUserD
     mark_accounts_dirty(db, affected_account_ids(tx))
     await _reload(db, tx)
     return _to_out(tx)
+
+# --- Импорт выписок ---
+class ImportPreviewItem(BaseModel):
+    date: str
+    amount: float
+    description: str
+    category_hint: str
+
+class ImportCommitRequest(BaseModel):
+    account_id: str
+    transactions: List[ImportPreviewItem]
+
+@router.post("/import/preview", response_model=List[ImportPreviewItem])
+async def preview_import(
+    current: CurrentUser,
+    file: UploadFile = File(...),
+):
+    """Загружает файл выписки и возвращает предпросмотр распарсенных транзакций."""
+    if not file.filename or not file.filename.lower().endswith((".csv", ".xlsx", ".xls")):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Поддерживаются только файлы CSV и XLSX")
+    
+    content = await file.read()
+    try:
+        rows = import_service.parse_statement(content, file.filename)
+        return rows
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    except Exception as e:
+        logger.exception("Ошибка при парсинге выписки")
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Внутренняя ошибка парсинга")
+
+
+@router.post("/import/commit", status_code=status.HTTP_201_CREATED)
+async def commit_import(
+    body: ImportCommitRequest,
+    db: DbDep,
+    current: CurrentUser,
+):
+    """Массово создает транзакции из подтвержденного предпросмотра."""
+    account_id = parse_uuid(body.account_id)
+    
+    # Проверяем, что счет принадлежит пользователю
+    acc = await db.get(Account, account_id)
+    if not acc or acc.family_id != current.family_id or acc.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Счет не найден")
+
+    created_count = 0
+    for item in body.transactions:
+        # Определяем тип транзакции по знаку суммы
+        tx_type = TransactionType.EXPENSE if item.amount < 0 else TransactionType.INCOME
+        abs_amount = abs(Decimal(str(item.amount)))
+        
+        # Пытаемся найти категорию по подсказке (упрощенно: точное совпадение имени)
+        category_id = None
+        if item.category_hint:
+            cat = (await db.execute(
+                select(Category).where(
+                    Category.family_id == current.family_id,
+                    func.lower(Category.name) == func.lower(item.category_hint),
+                    Category.deleted_at.is_(None)
+                )
+            )).scalar_one_or_none()
+            if cat:
+                category_id = cat.id
+
+        tx = Transaction(
+            family_id=current.family_id,
+            account_id=account_id,
+            occurred_at=datetime.strptime(item.date, "%Y-%m-%d"),
+            type=tx_type,
+            amount=abs_amount,
+            comment=item.description or None,
+            category_id=category_id,
+        )
+        db.add(tx)
+        created_count += 1
+
+    await db.flush()
+    
+    # Пересчитываем баланс счета
+    from app.services.balances import mark_accounts_dirty
+    mark_accounts_dirty(db, [account_id])
+    
+    return {"created_count": created_count, "account_id": str(account_id)}

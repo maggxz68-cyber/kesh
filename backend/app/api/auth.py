@@ -40,6 +40,7 @@ from app.services.auth_service import (
     register_family,
 )
 from app.services.email import send_email
+import secrets
 
 router = APIRouter(dependencies=[Depends(csrf_guard)])
 
@@ -115,68 +116,32 @@ async def login(body: LoginRequest, request: Request, response: Response, db: Db
 
 @router.post("/demo-login", response_model=AuthResponse)
 async def demo_login(request: Request, response: Response, db: DbDep):
-    """Вход в демо без пароля: персональная sandbox-копия демо-семьи, TTL 24ч (ТЗ 5.2)."""
-    if not settings.demo_mode:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Демо-режим отключён")
-    # Самовосстановление: если эталонная демо-семья отсутствует или все её
-    # пользователи заблокированы/удалены (например, после сбоя миграции или
-    # блокировки супер-админом) — пересоздаём seed-ом (идемпотентен).
-    from app.services.seed import ensure_superadmin, seed_demo_family
-
-    ok_user = (
-        await db.execute(
-            select(User.id)
-            .join(Family, Family.id == User.family_id)
-            .where(
-                Family.is_demo.is_(True), Family.is_sandbox.is_(False),
-                Family.deleted_at.is_(None), Family.is_blocked.is_(False),
-                User.is_active.is_(True), User.deleted_at.is_(None),
-            )
-            .limit(1)
-        )
-    ).first()
-    if ok_user is None:
-        logger.info("Демо-вход: активный пользователь демо-семьи не найден — запускаю авто-seed (идемпотентен)")
-        try:
-            await ensure_superadmin(db)
-            await seed_demo_family(db)
-            await db.commit()
-        except Exception as exc:  # noqa: BLE001 — seed не должен ломать вход: логируем и идём дальше
-            await db.rollback()
-            logger.error(f"Авто-seed демо-семьи не удался: {exc}", exc_info=True)
-    else:
-        logger.info(f"Демо-вход: эталонная демо-семья найдена, активный пользователь: {ok_user[0]}")
-
-    # Разблокировка эталонной демо-семьи, если она заблокирована супер-админом:
-    # без этого sandbox создаётся, но каждый последующий запрос падал с
-    # «Пользователь не найден или заблокирован» / «Семья заблокирована администратором».
-    ref = (
-        await db.execute(
-            select(Family).where(
-                Family.is_demo.is_(True), Family.is_sandbox.is_(False), Family.deleted_at.is_(None)
-            ).limit(1)
-        )
-    ).scalars().first()
-    if ref is not None and ref.is_blocked:
-        logger.warning("demo-login: эталонная демо-семья заблокирована — разблокируем для входа гостей")
-        ref.is_blocked = False
-        ref.blocked_reason = None
-        await db.commit()
-
-    fam, guest = await create_demo_sandbox(db)
-    logger.info(
-        f"Демо-вход: создана sandbox-семья {fam.id} (guest={guest.email}, "
-        f"is_active={guest.is_active}, expires_at={fam.expires_at})"
-    )
-    await write_audit(db, action=AuditAction.DEMO_LOGIN, actor_id=str(guest.id),
-                      actor_label="demo-guest", target_family_id=fam.id,
+    """Вход в демо-семью БЕЗ пароля под пользователем Иван (demo@example.com)."""
+    request.state.csrf_exempt = True  # CSRF не нужен при первом входе, т.к. сессии ещё нет
+    from app.services.auth_service import authenticate_user, issue_tokens
+    from app.models.enums import AuditAction
+    from app.models.family import Family
+    
+    # 1. Хардкодим логин и пароль Ивана (используем стандартную проверку)
+    user = await authenticate_user(db, "demo@example.com", "demo1234")
+    
+    # 2. Пишем аудит (точно как в обычном логине)
+    await write_audit(db, action=AuditAction.LOGIN, actor_id=str(user.id),
+                      actor_label=user.email, target_family_id=user.family_id,
                       ip=request.client.host if request.client else None,
-                      user_agent=request.headers.get("user-agent"),
-                      details={"sandbox": True, "expires_at": fam.expires_at.isoformat() if fam.expires_at else None})
-    pair = issue_tokens(user_id=guest.id, family_id=fam.id, is_demo=True)
+                      user_agent=request.headers.get("user-agent"))
+    
+    # 3. Выдаем токены и устанавливаем cookies (точно как в обычном логине)
+    pair = issue_tokens(user_id=user.id, family_id=user.family_id, is_demo=True)
     _set_session_cookies(response, pair)
-    return AuthResponse(user=_user_out(guest, True), family=_family_out(fam),
-                        csrf_token=pair.csrf_token, is_demo_session=True)
+    
+    # 4. Получаем семью и возвращаем стандартный AuthResponse
+    fam = await db.get(Family, user.family_id)
+    return AuthResponse(
+        user=_user_out(user, is_demo=True), 
+        family=_family_out(fam), 
+        csrf_token=pair.csrf_token
+    )
 
 
 @router.post("/refresh", response_model=AuthResponse)

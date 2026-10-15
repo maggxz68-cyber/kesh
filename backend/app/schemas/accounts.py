@@ -15,6 +15,7 @@ class AccountCreate(ORMBase):
     name: str = Field(min_length=1, max_length=200)
     type: AccountType
     currency: str = Field(default="RUB", min_length=3, max_length=3)
+    bank_name: str | None = Field(default=None, max_length=200, description="Название банка (для карт/счетов)")
     opening_balance: Decimal = Decimal("0")
     icon: str | None = Field(default=None, max_length=64)
     color: str | None = Field(default=None, max_length=16)
@@ -39,6 +40,7 @@ class AccountUpdate(ORMBase):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     type: AccountType | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=3)
+    bank_name: str | None = Field(default=None, max_length=200)
     opening_balance: Decimal | None = None
     icon: str | None = None
     color: str | None = None
@@ -50,6 +52,7 @@ class AccountOut(ORMBase):
     name: str
     type: AccountType
     currency: str
+    bank_name: str | None
     opening_balance: Decimal
     balance: Decimal
     icon: str | None

@@ -27,7 +27,7 @@ from app.models.enums import ReceiptParseStatus, TransactionType
 from app.models.receipt import Receipt, ReceiptItem, ReceiptTransaction
 from app.models.transaction import Transaction
 from app.schemas.reports import ReceiptOut, ReceiptParseResult, ReceiptUpdate
-from app.services import fns, ocr
+from app.services import fns, ocr, receipt_categorization
 
 async def _refresh_noload(db, obj):
     """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations).
@@ -189,9 +189,55 @@ async def _apply_parse(db: DbDep, r: Receipt, parsed: ocr.OcrResult | None, stat
 
     # Автопересчёт из позиций имеет приоритет над OCR-полем «ИТОГ» и старым значением (ТЗ 7.4)
     total_final = new_items_sum if new_items_sum is not None else (r.total_amount or parsed.total or Decimal("0"))
-    store_final = parsed.store_name or r.store_name
+    
+    # Умное определение магазина: приоритет у ИНН, так как это 100% точно
+    from app.services.receipt_categorization import get_store_by_inn
     inn_final = parsed.inn or r.inn
+    store_by_inn = get_store_by_inn(inn_final)
+    
+    if store_by_inn:
+        store_final = store_by_inn
+    else:
+        inn_final = parsed.inn or r.inn
+    from app.services.receipt_categorization import get_store_by_inn
+    store_by_inn = get_store_by_inn(inn_final)
+    if store_by_inn:
+        store_final = store_by_inn
+    else:
+        store_final = parsed.store_name or r.store_name
+        if store_final in (None, "", "None"): store_final = None
+        # Очищаем мусорные значения, если они вдруг попали туда
+        if store_final in (None, "None", None, ""):
+            store_final = None
+    
+    # Автокатегоризация по магазину
+    suggested_category = None
+    if store_final or inn_final:
+        suggested_category = receipt_categorization.categorize_by_store(store_final, inn_final)
     text_final = (parsed.text[:20000] if parsed.text else None) or r.ocr_text
+    
+    # Обработка даты из OCR (может быть строкой 'YYYY-MM-DD' или объектом date/datetime)
+    date_final = getattr(r, 'receipt_date', None)
+    if getattr(parsed, 'receipt_date', None):
+        try:
+            from datetime import datetime, date
+            if isinstance(parsed.receipt_date, str):
+                date_final = datetime.fromisoformat(parsed.receipt_date).date()
+            elif isinstance(parsed.receipt_date, (datetime, date)):
+                date_final = parsed.receipt_date
+        except Exception:
+            pass
+    
+    # Автокатегоризация по магазину
+    suggested_category = None
+    if store_final or inn_final:
+        suggested_category = receipt_categorization.categorize_by_store(store_final, inn_final)
+    
+    # Сохраняем категорию в meta
+    meta_current = dict(r.meta or {})
+    if suggested_category:
+        meta_current["suggested_category"] = suggested_category
+        meta_current["suggested_category_name"] = receipt_categorization.get_category_display_name(suggested_category)
 
     r.parse_status = status_
     await db.flush()
@@ -205,6 +251,8 @@ async def _apply_parse(db: DbDep, r: Receipt, parsed: ocr.OcrResult | None, stat
             store_name=store_final,
             inn=inn_final,
             ocr_text=text_final,
+            receipt_date=date_final,
+            meta=meta_current,
         )
     )
     set_committed_value(r, "parse_status", status_)
@@ -212,6 +260,7 @@ async def _apply_parse(db: DbDep, r: Receipt, parsed: ocr.OcrResult | None, stat
     set_committed_value(r, "store_name", store_final)
     set_committed_value(r, "inn", inn_final)
     set_committed_value(r, "ocr_text", text_final)
+    set_committed_value(r, "receipt_date", date_final)
     await db.flush()
 
 
@@ -377,6 +426,28 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                 r.receipt_number = p.receipt_number[:64]
             if p.date:
                 r.receipt_date = p.date.replace(tzinfo=timezone.utc) if p.date.tzinfo is None else p.date
+            
+            # Запускаем минимальный OCR для извлечения магазина и ИНН
+            try:
+                from app.services.receipt_minimal_ocr import extract_store_and_inn
+                ocr_data = await asyncio.to_thread(extract_store_and_inn, str(abs_path))
+                if ocr_data.get('inn') and not r.inn:
+                    r.inn = ocr_data['inn']
+                if ocr_data.get('store_name') and not r.store_name:
+                    r.store_name = ocr_data['store_name']
+            except Exception as exc:
+                logger.warning(f"Минимальный OCR не удался: {exc}")
+            
+            # Автокатегоризация по магазину/ИНН
+            try:
+                from app.services.receipt_categorization import categorize_by_store, get_category_display_name
+                category = categorize_by_store(r.store_name, r.inn)
+                if category:
+                    meta["suggested_category"] = category
+                    meta["suggested_category_name"] = get_category_display_name(category)
+                    logger.info(f"Автокатегория: {category} ({get_category_display_name(category)})")
+            except Exception as exc:
+                logger.warning(f"Автокатегоризация не удалась: {exc}")
             try:
                 check = await fns.check_receipt(p)
             except Exception as exc:  # noqa: BLE001 — недоступность API ФНС не должна давать 500
@@ -404,6 +475,8 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                     await db.flush()
                     new_items = await _reload_items(r)
                     s = sum((i.total for i in new_items), Decimal("0"))
+            
+
                     if s > 0:
                         r.total_amount = s
             r.meta = meta

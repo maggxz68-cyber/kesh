@@ -661,3 +661,89 @@ async def export_transactions(db: AsyncSession, family_id: uuid.UUID, **filters)
             }
         )
     return result
+
+async def period_comparison(db: AsyncSession, family_id: uuid.UUID, dt_from: datetime, dt_to: datetime) -> dict:
+    """Сравнение текущего периода с предыдущим такой же длительности (MoM/YoY)."""
+    current = await summary(db, family_id, dt_from, dt_to)
+    
+    # Вычисляем длительность периода и сдвигаем даты назад
+    duration = dt_to - dt_from
+    prev_to = dt_from - timedelta(days=1)
+    prev_from = prev_to - duration
+    
+    previous = await summary(db, family_id, prev_from, prev_to)
+    
+    def calc_delta(curr: Decimal, prev: Decimal) -> float:
+        if prev == 0:
+            return 100.0 if curr > 0 else 0.0
+        return round(((float(curr) - float(prev)) / abs(float(prev))) * 100, 1)
+
+    return {
+        "current": current,
+        "previous": previous,
+        "deltas": {
+            "income_delta_pct": calc_delta(current["income"], previous["income"]),
+            "expense_delta_pct": calc_delta(current["expense"], previous["expense"]),
+            "net_delta_pct": calc_delta(current["net"], previous["net"]),
+        }
+    }
+
+
+async def expense_forecast(db: AsyncSession, family_id: uuid.UUID) -> dict:
+    """Простой прогноз расходов на следующий месяц на основе последних 3 месяцев."""
+    months_data = await by_month(db, family_id, months=3)
+    expenses = [float(m["expense"]) for m in months_data if float(m["expense"]) > 0]
+    
+    if len(expenses) < 2:
+        return {"forecast": 0, "trend": "stable", "confidence": "low", "months_used": len(expenses)}
+    
+    avg_expense = sum(expenses) / len(expenses)
+    # Если последний месяц выше среднего, предполагаем рост на 5%, иначе стабильность
+    trend_factor = 1.05 if expenses[-1] > avg_expense else 1.0
+    forecast = avg_expense * trend_factor
+    
+    return {
+        "forecast": round(forecast, 2),
+        "trend": "up" if trend_factor > 1 else "stable",
+        "confidence": "medium" if len(expenses) >= 3 else "low",
+        "months_used": len(expenses)
+    }
+
+
+async def generate_insights(db: AsyncSession, family_id: uuid.UUID, dt_from: datetime, dt_to: datetime) -> list[dict]:
+    """Генерация 2-3 текстовых инсайтов на основе данных."""
+    insights = []
+    
+    # Инсайт 1: Топ категория
+    cats = await by_category(db, family_id, dt_from, dt_to, kind="expense", limit=1)
+    if cats:
+        top = cats[0]
+        insights.append({
+            "type": "info",
+            "icon": "pie-chart",
+            "title": "Главная статья расходов",
+            "text": f"Категория «{top['category_name']}» забирает {top['percent']}% бюджета ({fmt_money(top['amount'])})."
+        })
+    
+    # Инсайт 2: Дисциплина чеков
+    receipts = await receipts_report(db, family_id, dt_from, dt_to)
+    if receipts["count"] > 0:
+        insights.append({
+            "type": "success",
+            "icon": "check-circle",
+            "title": "Отличная дисциплина",
+            "text": f"Добавлено {receipts['count']} чеков. Это делает аналитику максимально точной."
+        })
+    else:
+        insights.append({
+            "type": "warning",
+            "icon": "alert-triangle",
+            "title": "Используйте сканер чеков",
+            "text": "За этот период не добавлено ни одного чека. Автоматический учёт сэкономит время."
+        })
+        
+    return insights
+
+def fmt_money(amount: Decimal) -> str:
+    """Хелпер для инсайтов."""
+    return f"{amount:,.2f} ₽".replace(",", " ")

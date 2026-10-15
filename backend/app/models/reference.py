@@ -33,7 +33,8 @@ class Account(Base, TimestampMixin, SoftDeleteMixin):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     type: Mapped[AccountType] = mapped_column(enum_column(AccountType, "account_type"), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
+    bank_name: Mapped[str | None] = mapped_column(String(200), nullable=True, doc="Название банка (для карт/счетов)")
+    currency: Mapped[str] = mapped_column(String(3), ForeignKey("currencies.code", ondelete="RESTRICT"), nullable=False, default="RUB")
 
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
     # Кэшированный текущий баланс; источник истины — транзакции (пересчёт на записи).

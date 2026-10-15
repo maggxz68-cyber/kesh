@@ -9,6 +9,7 @@ from app.models.enums import (
     TransactionType,
     UserRole,
 )
+from app.models.recurring import RecurringPayment
 from app.models.family import (
     Family,
     FamilyMemberVisibility,
@@ -19,6 +20,7 @@ from app.models.family import (
 from app.models.mixins import SoftDeleteMixin, TimestampMixin
 from app.models.receipt import AuditLog, Receipt, ReceiptItem, ReceiptTransaction
 from app.models.reference import Account, Category, Counterparty, Tag
+from app.models.currency import Currency, ExchangeRate
 from app.models.transaction import Budget, Transaction, transaction_tags
 
 __all__ = [
@@ -30,6 +32,7 @@ __all__ = [
     "ReceiptParseStatus",
     "TransactionType",
     "UserRole",
+    "RecurringPayment",
     "Family",
     "User",
     "SuperAdmin",
@@ -48,8 +51,11 @@ __all__ = [
     "AuditLog",
     "TimestampMixin",
     "SoftDeleteMixin",
+    "Currency",
+    "ExchangeRate",
 ]
 
 
 # Безопасный fallback для ленивой загрузки связей в async-контексте.
 install_lazy_load_fallback()
+

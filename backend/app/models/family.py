@@ -37,11 +37,9 @@ class Family(Base, TimestampMixin, SoftDeleteMixin):
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Europe/Moscow")
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
 
-    # Статусы платформы
     is_blocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     blocked_reason: Mapped[str | None] = mapped_column(String(500))
 
-    # Демо/песочница: sandbox-копии демо-семьи живут TTL и удаляются cron'ом
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_sandbox: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -50,20 +48,20 @@ class Family(Base, TimestampMixin, SoftDeleteMixin):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    users: Mapped[list[User]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
-    accounts: Mapped[list["Account"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")  # noqa: F821
-    categories: Mapped[list["Category"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")  # noqa: F821
-    tags: Mapped[list["Tag"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")  # noqa: F821
-    counterparties: Mapped[list["Counterparty"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")  # noqa: F821
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")  # noqa: F821
-    budgets: Mapped[list["Budget"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")  # noqa: F821
-    receipts: Mapped[list["Receipt"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")  # noqa: F821
+    users: Mapped[list["User"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
+    accounts: Mapped[list["Account"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
+    categories: Mapped[list["Category"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
+    tags: Mapped[list["Tag"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
+    counterparties: Mapped[list["Counterparty"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
+    budgets: Mapped[list["Budget"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
+    receipts: Mapped[list["Receipt"]] = relationship(back_populates="family", cascade="all, delete-orphan", lazy="noload")
 
     __table_args__ = (Index("ix_families_is_sandbox_expires", "is_sandbox", "expires_at"),)
 
 
 class User(Base, TimestampMixin, SoftDeleteMixin):
-    """Пользователь семьи (owner/member). Супер-админ — отдельная таблица."""
+    """Пользователь семьи (owner/member)."""
 
     __tablename__ = "users"
 
@@ -80,7 +78,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    family: Mapped[Family] = relationship(back_populates="users", lazy="noload")
+    family: Mapped["Family"] = relationship(back_populates="users", lazy="noload")
     memberships: Mapped[list["FamilyMemberVisibility"]] = relationship(
         back_populates="user", cascade="all, delete-orphan",
         foreign_keys="FamilyMemberVisibility.user_id",
@@ -90,7 +88,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
 
 
 class SuperAdmin(Base, TimestampMixin):
-    """Платформенный администратор. Не привязан ни к одной семье."""
+    """Платформенный администратор."""
 
     __tablename__ = "superadmins"
 
@@ -102,7 +100,7 @@ class SuperAdmin(Base, TimestampMixin):
 
 
 class Invitation(Base, TimestampMixin):
-    """Приглашение в семью (владелец отправляет, участник принимает по коду)."""
+    """Приглашение в семью."""
 
     __tablename__ = "invitations"
 
@@ -122,7 +120,7 @@ class Invitation(Base, TimestampMixin):
 
 
 class FamilyMemberVisibility(Base, TimestampMixin):
-    """Настройка видимости данных участника для остальных членов семьи (ТЗ 4.3)."""
+    """Настройка видимости данных участника."""
 
     __tablename__ = "member_visibility"
 
@@ -130,14 +128,13 @@ class FamilyMemberVisibility(Base, TimestampMixin):
     user_id: Mapped[_uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # Кому видна активность (NULL = всем членам семьи)
     visible_to_user_id: Mapped[_uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE")
     )
     show_transactions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     show_balances: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    user: Mapped[User] = relationship(back_populates="memberships", lazy="noload", foreign_keys=[user_id])
+    user: Mapped["User"] = relationship(back_populates="memberships", lazy="noload", foreign_keys=[user_id])
 
     __table_args__ = (
         UniqueConstraint("user_id", "visible_to_user_id", name="uq_member_visibility_pair"),

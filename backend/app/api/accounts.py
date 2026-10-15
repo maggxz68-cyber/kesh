@@ -43,6 +43,7 @@ async def create_account(body: CompatAccountCreate, db: DbDep, current: CurrentU
         name=body.name.strip(),
         type=body.type,
         currency=body.currency.upper(),
+        bank_name=body.bank_name,
         opening_balance=body.opening_balance,
         balance=body.opening_balance,
         icon=body.icon,

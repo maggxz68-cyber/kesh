@@ -1,5 +1,4 @@
 # Family Finance Tracker — production-ready compose stack
-# Services: postgres 16, backend (FastAPI), scheduler (cron-задачи), frontend (nginx SPA), nginx (reverse-proxy + TLS)
 name: family-finance
 
 services:
@@ -37,6 +36,7 @@ services:
     volumes:
       - receipts_data:/data/receipts
       - backend_logs:/logs
+      - backups_data:/data/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -48,7 +48,6 @@ services:
       start_period: 40s
     networks: [ffnet]
 
-  # Фоновые задачи: очистка sandbox-копий (TTL 24ч), ежедневный сброс демо-семьи
   scheduler:
     image: ff-backend:${TAG:-latest}
     container_name: ff-scheduler
@@ -62,6 +61,7 @@ services:
     volumes:
       - receipts_data:/data/receipts
       - backend_logs:/logs
+      - backups_data:/data/backups
     depends_on:
       backend:
         condition: service_healthy
@@ -103,9 +103,10 @@ services:
 volumes:
   pg_data:
   receipts_data:
+  backend_logs:
   nginx_certs:
   nginx_webroot:
-  backend_logs:
+  backups_data:
 
 networks:
   ffnet:

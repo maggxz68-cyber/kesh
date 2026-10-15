@@ -1,5 +1,5 @@
 // Сканер чеков (ТЗ 7.4/7.7): камера телефона, QR ФНС, OCR, привязка к транзакции.
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Camera, ImageUp, Loader2, ScanLine, CheckCircle2 } from 'lucide-react';
 import { api } from '../api/client';
@@ -13,6 +13,7 @@ interface ReceiptOut {
   total_amount: number | null; items_total: number;
   receipt_date: string | null; qr_payload_raw: string | null; ocr_text: string | null;
   parse_status: string; items: ReceiptItem[];
+  meta?: { suggested_category?: string; suggested_category_name?: string };
 }
 
 export default function ScanPage() {
@@ -25,6 +26,19 @@ export default function ScanPage() {
   const accounts = useAccounts();
   const categories = useCategories();
   const [tx, setTx] = useState({ account_id: '', category_id: '', comment: '' });
+
+  // Автоподстановка категории при загрузке категорий или receipt
+  useEffect(() => {
+    if (receipt?.meta?.suggested_category_name && categories.data && categories.data.length > 0) {
+      // Ищем категорию по имени (так как slug нет в базе)
+      const matched = categories.data.find((c: any) => 
+        c.name === receipt.meta?.suggested_category_name && c.kind === 'expense'
+      );
+      if (matched && !tx.category_id) {
+        setTx((prev: any) => ({ ...prev, category_id: matched.id }));
+      }
+    }
+  }, [categories.data, receipt, tx.category_id]);
 
   const pick = (f: File | undefined) => {
     if (!f) return;
@@ -41,7 +55,17 @@ export default function ScanPage() {
       fd.append('file', file);
       return api.upload<ReceiptOut>(`/receipts/upload?auto_parse=true`, fd);
     },
-    onSuccess: (r) => { setReceipt(r); qc.invalidateQueries({ queryKey: ['transactions'] }); },
+    onSuccess: (r) => {
+      setReceipt(r);
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      // Автоподстановка категории, если бэкенд её предложил
+      if (r.meta?.suggested_category && categories.data) {
+        const matched = categories.data.find((c: any) => c.slug === r.meta?.suggested_category && c.kind === 'expense');
+        if (matched) {
+          setTx((prev: any) => ({ ...prev, category_id: matched.id }));
+        }
+      }
+    },
     onError: (e: Error) => setError(e.message),
   });
 

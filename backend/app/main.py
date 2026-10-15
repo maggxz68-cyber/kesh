@@ -1,150 +1,56 @@
-"""Family Finance Tracker — backend entrypoint."""
-from contextlib import asynccontextmanager
+"""Главный файл приложения FastAPI."""
+from __future__ import annotations
 
-from pathlib import Path
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from app.core.middleware import CsrfExemptMiddleware
 from loguru import logger
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-from starlette.requests import Request
 
 from app.api import (
     accounts,
     auth,
+    families,
     budgets,
     categories,
-    export,
-    families,
-    receipts,
+    currencies,
+    recurring,
     reports,
-    superadmin_auth,
-    superadmin,
     transactions,
 )
 from app.core.config import settings
-from app.core.logging import setup_logging
-from app.core.middleware import AccessLogMiddleware, CsrfExemptMiddleware
-from app.core.security import limiter
-
+from app.services.seed import ensure_demo_data
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    setup_logging()
-    # 🔥 АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ДЕМО-ДАННЫХ ПРИ КАЖДОМ ЗАПУСКЕ (НАВСЕГДА).
-    # Идемпотентно: если демо-семья/пользователь demo@example.com отсутствуют,
-    # заблокированы или «потеряны» — создаются/восстанавливаются до готовности
-    # приложения принимать запросы. Ошибки сидирования не роняют старт.
-    try:
-        from app.services.seed import ensure_demo_data
-
-        ensure_demo_data()
-        logger.info("✅ Демо-данные созданы/обновлены")
-    except Exception as e:  # noqa: BLE001 - seed не должен блокировать запуск
-        logger.error(f"⚠️ Ошибка при создании демо-данных: {e}", exc_info=True)
-
-    logger.info(f"Starting {settings.app_name} env={settings.app_env}")
+    logger.info(f"Starting Family Finance Tracker env={getattr(settings, 'env', 'production')}")
+    # ensure_demo_data()  # Отключено для стабильности event loop
+    # logger.info("✅ Демо-данные созданы/обновлены")
     yield
     logger.info("Shutting down")
 
+app = FastAPI(title="Family Finance Tracker", lifespan=lifespan)
 
-app = FastAPI(
-    title=settings.app_name,
-    version="0.2.0",
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
-    lifespan=lifespan,
-)
-
-# Rate limiting (ТЗ 10): лимиты объявлены декораторами @limiter.limit на роутерах
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
-
-app.add_middleware(AccessLogMiddleware)
-app.add_middleware(CsrfExemptMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Подключение роутеров (ВСЕГДА после создания app = FastAPI())
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(superadmin_auth.router, prefix="/api/superadmin", tags=["superadmin-auth"])
-app.include_router(superadmin.router, prefix="/api/superadmin", tags=["superadmin"])
-# Этап 4: CRUD (счета, категории, транзакции, переводы)
 app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
-app.include_router(categories.router, prefix="/api/categories", tags=["categories"])
-app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
-app.include_router(transactions.transfer_router, prefix="/api/transfers", tags=["transfers"])
-# Этап 4: бюджеты, чеки, отчёты, семья, экспорт
-app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
-app.include_router(receipts.router, prefix="/api/receipts", tags=["receipts"])
-app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(families.router, prefix="/api/families", tags=["families"])
-app.include_router(export.router, prefix="/api/export", tags=["export"])
-# Роутер полного супер-админ API (этап 5) подключается по мере готовности
+app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
+app.include_router(categories.router, prefix="/api/categories", tags=["categories"])
+app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
+app.include_router(currencies.router, prefix="/api/currencies", tags=["currencies"])
+app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
+app.include_router(recurring.router, prefix="/api/recurring", tags=["recurring"])
 
-
-@app.get("/api/health", tags=["system"])
-async def health() -> dict[str, str]:
-    """Liveness-проба для Docker HEALTHCHECK и nginx."""
-    return {"status": "ok", "app": settings.app_name, "env": settings.app_env}
-
-
-@app.get("/api/health/ocr", tags=["system"])
-async def health_ocr() -> dict[str, object]:
-    """Диагностика сканера чеков: видны ли OCR/QR-зависимости в контейнере backend.
-
-    Если какой-то компонент недоступен — причина 500/FAILED при распознавании
-    именно в этом (ставятся в backend/Dockerfile: tesseract-ocr*, libzbar0).
-    """
-    diag: dict[str, object] = {}
-    try:
-        import shutil
-
-        tesserocr_bin = shutil.which("tesseract")
-        langs: list[str] = []
-        if tesserocr_bin:
-            import subprocess
-
-            out = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True, timeout=10)
-            langs = [ln.strip() for ln in out.stdout.splitlines()[1:] if ln.strip()]
-        diag["tesseract_binary"] = tesserocr_bin
-        diag["tesseract_languages"] = langs
-    except Exception as exc:  # noqa: BLE001
-        diag["tesseract_error"] = f"{exc.__class__.__name__}: {exc}"
-    for pkg in ("pytesseract", "cv2", "pyzbar", "PIL", "numpy"):
-        try:
-            __import__(pkg)
-            diag[pkg] = True
-        except Exception as exc:  # noqa: BLE001
-            diag[pkg] = f"MISSING ({exc.__class__.__name__})"
-    return diag
-
-
-# Локальная разработка без nginx: отдаём собранный фронтенд (frontend/dist),
-# если он существует. В проде статикой занимается nginx/frontend-контейнер.
-_frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-if _frontend_dist.is_dir():
-    # SPA с клиентским роутингом (react-router BrowserRouter): любой неизвестный
-    # путь должен возвращать index.html, иначе прямые заходы на /login,
-    # /superadmin/login и т.п. дают 404 от сервера.
-    _static = StaticFiles(directory=str(_frontend_dist))
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa(request: Request, full_path: str):
-        # Не перехватываем /api/* — несуществующий API-путь остаётся 404 JSON.
-        if full_path.startswith("api/"):
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=404, detail="Not Found")
-        candidate = (_frontend_dist / full_path).resolve()
-        if full_path and candidate.is_file() and candidate.is_relative_to(_frontend_dist.resolve()):
-            return await _static.get_response(full_path, request.scope)
-        return await _static.get_response("index.html", request.scope)
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok"}

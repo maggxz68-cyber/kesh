@@ -1,2 +1,24 @@
 # TypeScript build info
 *.tsbuildinfo__pycache__/
+
+# Секреты и окружение
+.env
+cookies.txt
+
+# Python кэш
+__pycache__/
+*.pyc
+*.pyo
+
+# Бэкапы
+*.bak
+*.bak2
+
+# Тестовые данные
+test_statement.csv
+
+# Случайные файлы от опечаток
+e build --no-cache
+e down
+e up -d
+leep 15

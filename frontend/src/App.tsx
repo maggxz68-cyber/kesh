@@ -12,6 +12,8 @@ import AccountsPage from './pages/AccountsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import BudgetsPage from './pages/BudgetsPage';
 import ReportsPage from './pages/ReportsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import SubscriptionsPage from './pages/SubscriptionsPage';
 import FamilyPage from './pages/FamilyPage';
 import SettingsPage from './pages/SettingsPage';
 import SuperadminLoginPage from './pages/superadmin/SuperadminLoginPage';
@@ -90,6 +92,8 @@ export default function App() {
             <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/budgets" element={<BudgetsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/subscriptions" element={<SubscriptionsPage />} />
             <Route path="/family" element={<FamilyPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

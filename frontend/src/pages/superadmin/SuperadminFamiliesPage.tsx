@@ -1,7 +1,7 @@
-// Семьи: список + детали (read-only), блок/разблок, soft/hard delete, impersonate, reset password.
+// Семьи: список + детали, блок/разблок, soft/hard delete, impersonate, reset password, reset family, backups.
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { Search, Eye, Ban, Unlock, Trash2, UserCog, KeyRound, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Eye, Ban, Unlock, Trash2, UserCog, KeyRound, ChevronLeft, ChevronRight, RefreshCcw, Database, Download, AlertTriangle } from 'lucide-react';
 import { api } from '../../api/client';
 import { Button, Card, Input, Modal, Badge, Skeleton } from '../../components/ui';
 
@@ -26,46 +26,112 @@ export default function SuperadminFamiliesPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [resetFor, setResetFor] = useState<{ userId: string; name: string } | null>(null);
   const [newPass, setNewPass] = useState('');
+  
+  // Новые состояния для бекапов и сброса семьи
+  const [showBackups, setShowBackups] = useState(false);
+  const [resettingFamilyId, setResettingFamilyId] = useState<string | null>(null);
 
   const list = useQuery({
     queryKey: ['sa-families', page, search],
     queryFn: () => api.get<FamilyList>(`/superadmin/families?page=${page}&page_size=20${search ? `&search=${encodeURIComponent(search)}` : ''}`),
     placeholderData: keepPreviousData,
   });
+  
   const detail = useQuery({
     queryKey: ['sa-family', detailId],
     queryFn: () => api.get<Detail>(`/superadmin/families/${detailId}`),
     enabled: !!detailId,
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['sa-families'] });
+  // --- Запросы для бекапов ---
+  const backupsQuery = useQuery({
+    queryKey: ['sa-backups'],
+    queryFn: () => api.get<{ backups: string[] }>('/superadmin/system/backups'),
+    enabled: showBackups,
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['sa-families'] });
+    qc.invalidateQueries({ queryKey: ['sa-family'] });
+  };
+
   const block = useMutation({
     mutationFn: ({ id, blocked, reason }: { id: string; blocked: boolean; reason?: string }) =>
       api.patch(`/superadmin/families/${id}`, { is_blocked: blocked, reason: reason ?? null }),
     onSuccess: invalidate,
   });
+
   const remove = useMutation({
     mutationFn: ({ id, hard }: { id: string; hard: boolean }) =>
       api.del(`/superadmin/families/${id}${hard ? '?hard=true' : ''}`),
     onSuccess: () => { invalidate(); setDetailId(null); },
   });
+
   const impersonate = useMutation({
     mutationFn: ({ fid, uid }: { fid: string; uid: string }) =>
       api.post<{ access_token: string }>(`/superadmin/families/${fid}/impersonate/${uid}`),
-    onSuccess: (r) => {
-      // токен в memory-хранилище не держим — backend сам выставил cookie; перезагружаем приложение
-      window.open('/', '_blank');
-      void r;
-    },
+    onSuccess: () => { window.open('/', '_blank'); },
   });
+
   const resetPass = useMutation({
     mutationFn: () => api.post(`/superadmin/users/${resetFor!.userId}/reset-password`, { new_password: newPass, force_change: true }),
-    onSuccess: () => { setResetFor(null); setNewPass(''); alert('Пароль сброшен'); },
+    onSuccess: () => { setResetFor(null); setNewPass(''); alert('Пароль успешно сброшен'); },
   });
+
+  // --- Новые мутации ---
+  const resetFamily = useMutation({
+    mutationFn: (familyId: string) => api.post(`/superadmin/families/${familyId}/reset`),
+    onSuccess: () => {
+      alert('Семья успешно сброшена до заводских настроек!');
+      setResettingFamilyId(null);
+      invalidate();
+      if (detailId) qc.invalidateQueries({ queryKey: ['sa-family', detailId] });
+    },
+    onError: (e: any) => alert('Ошибка сброса: ' + (e.response?.data?.detail || e.message)),
+  });
+
+  const createBackup = useMutation({
+    mutationFn: () => api.post('/superadmin/system/backup'),
+    onSuccess: (data: any) => {
+      alert(`Бекап успешно создан: ${data.filename}`);
+      qc.invalidateQueries({ queryKey: ['sa-backups'] });
+    },
+    onError: (e: any) => alert('Ошибка создания бекапа: ' + (e.response?.data?.detail || e.message)),
+  });
+
+  const restoreBackup = useMutation({
+    mutationFn: (filename: string) => api.post(`/superadmin/system/restore/${filename}`),
+    onSuccess: (data: any) => {
+      alert(data.message + '\nРекомендуется перезапустить backend.');
+      setShowBackups(false);
+    },
+    onError: (e: any) => alert('Ошибка восстановления: ' + (e.response?.data?.detail || e.message)),
+  });
+
+  const handleResetFamily = (familyId: string, familyName: string, isDemo: boolean) => {
+    const warning = isDemo 
+      ? `Вы уверены, что хотите сбросить ДЕМО-семью «${familyName}»? Все пользовательские транзакции будут удалены, а базовые категории и счета восстановлены.`
+      : `ВНИМАНИЕ! Вы уверены, что хотите сбросить семью «${familyName}»? ВСЕ транзакции и счета этой семьи будут безвозвратно удалены и заменены пустым шаблоном.`;
+    
+    if (confirm(warning)) {
+      setResettingFamilyId(familyId);
+      resetFamily.mutate(familyId);
+    }
+  };
 
   return (
     <>
-      <h1 className="mb-4 text-xl font-bold">Семьи</h1>
+      <h1 className="mb-4 text-xl font-bold">Управление семьями</h1>
+      
+      {/* --- Секция системных бекапов --- */}
+      <Card className="mb-4 p-4 flex flex-wrap items-center gap-3 bg-slate-900/50 border-slate-700">
+        <Database className="text-blue-400" size={20} />
+        <span className="font-semibold text-slate-200 mr-auto">Системные резервные копии БД</span>
+        <Button variant="outline" size="sm" onClick={() => setShowBackups(true)}>
+          <Download size={14} className="mr-2" /> Управление бекапами
+        </Button>
+      </Card>
+
       <div className="relative mb-3 max-w-sm">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <Input className="pl-8" placeholder="Поиск по названию…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
@@ -135,6 +201,25 @@ export default function SuperadminFamiliesPage() {
       <Modal open={!!detailId} onClose={() => setDetailId(null)} title={detail.data?.family.name ?? 'Семья'} wide>
         {!detail.data ? <Skeleton className="h-40" /> : (
           <div className="space-y-4 text-sm">
+            {/* Заголовок с кнопкой сброса */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 pb-3">
+              <div className="flex gap-2">
+                <Badge color={detail.data.family.is_demo ? "#f59e0b" : "#3b82f6"}>
+                  {detail.data.family.is_demo ? 'ДЕМО' : 'Обычная'}
+                </Badge>
+                <span className="text-slate-400">ID: {detail.data.family.id}</span>
+              </div>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => handleResetFamily(detail.data.family.id, detail.data.family.name, detail.data.family.is_demo)}
+                disabled={resetFamily.isPending || resettingFamilyId === detail.data.family.id}
+              >
+                <RefreshCcw size={14} className="mr-2" />
+                {resettingFamilyId === detail.data.family.id ? 'Сброс...' : 'Сбросить до заводских'}
+              </Button>
+            </div>
+
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div><div className="text-slate-400">Валюта</div>{detail.data.family.currency}</div>
               <div><div className="text-slate-400">TZ</div>{detail.data.family.timezone}</div>
@@ -149,10 +234,10 @@ export default function SuperadminFamiliesPage() {
                     <span>{u.name} <span className="text-slate-400">({u.email})</span> · {u.role}{!u.is_active ? ' · неактивен' : ''}</span>
                     <span className="flex gap-1">
                       <Button size="sm" variant="outline" onClick={() => impersonate.mutate({ fid: detail.data!.family.id, uid: u.id })}>
-                        <UserCog size={13} /> Зайти как
+                        <UserCog size={13} className="mr-1" /> Зайти как
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setResetFor({ userId: u.id, name: u.name })}>
-                        <KeyRound size={13} /> Сброс пароля
+                        <KeyRound size={13} className="mr-1" /> Сброс пароля
                       </Button>
                     </span>
                   </li>
@@ -180,7 +265,7 @@ export default function SuperadminFamiliesPage() {
         )}
       </Modal>
 
-      {/* Reset password */}
+      {/* Reset password Modal */}
       <Modal open={!!resetFor} onClose={() => setResetFor(null)} title={`Новый пароль: ${resetFor?.name}`}>
         <div className="space-y-3">
           <Input type="text" placeholder="Мин. 8 символов" value={newPass} onChange={(e) => setNewPass(e.target.value)} />
@@ -188,6 +273,48 @@ export default function SuperadminFamiliesPage() {
           <Button variant="destructive" className="w-full" disabled={newPass.length < 8 || resetPass.isPending} onClick={() => resetPass.mutate()}>
             Сбросить (с принудительной сменой при входе)
           </Button>
+        </div>
+      </Modal>
+
+      {/* --- Модальное окно управления бекапами --- */}
+      <Modal open={showBackups} onClose={() => setShowBackups(false)} title="🗄️ Управление резервными копиями БД" wide>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg bg-blue-900/20 p-4 border border-blue-800">
+            <div>
+              <h4 className="font-semibold text-blue-300">Создать новый бекап</h4>
+              <p className="text-sm text-slate-400">Это создаст полный SQL-дамп текущей базы данных.</p>
+            </div>
+            <Button onClick={() => createBackup.mutate()} disabled={createBackup.isPending}>
+              {createBackup.isPending ? 'Создание...' : 'Создать бекап сейчас'}
+            </Button>
+          </div>
+
+          <div>
+            <h4 className="mb-2 font-semibold flex items-center gap-2">
+              <Download size={16} /> Доступные файлы бекапов
+            </h4>
+            {backupsQuery.isLoading ? (
+              <Skeleton className="h-20" />
+            ) : backupsQuery.data?.backups && backupsQuery.data.backups.length > 0 ? (
+              <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                {backupsQuery.data.backups.map((file) => (
+                  <li key={file} className="flex items-center justify-between rounded bg-slate-800 p-3 border border-slate-700">
+                    <span className="font-mono text-sm text-slate-300 truncate max-w-[250px] sm:max-w-md">{file}</span>
+                    <Button 
+                      size="sm" 
+                      variant="destructive"
+                      onClick={() => confirm(`ВНИМАНИЕ! Это ПОЛНОСТЬЮ ПЕРЕЗАПИШЕТ базу данных файлом ${file}. Все текущие данные будут потеряны. Продолжить?`) && restoreBackup.mutate(file)}
+                      disabled={restoreBackup.isPending}
+                    >
+                      <AlertTriangle size={14} className="mr-2" /> Восстановить
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-500 italic">Бекапы пока не создавались.</p>
+            )}
+          </div>
         </div>
       </Modal>
     </>

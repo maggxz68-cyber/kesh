@@ -177,3 +177,33 @@ async def receipts_stats(
     """Статистика по чекам: количество, средняя сумма, топ магазинов."""
     dt_from, dt_to = reports.period_bounds(date_from, date_to)
     return await reports.receipts_report(db, current.family_id, dt_from, dt_to)
+
+@router.get("/comparison")
+async def comparison(
+    db: DbDep,
+    current: CurrentUserDep,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict:
+    """Сравнение текущего периода с предыдущим (MoM/YoY)."""
+    dt_from, dt_to = reports.period_bounds(date_from, date_to)
+    return await reports.period_comparison(db, current.family_id, dt_from, dt_to)
+
+
+@router.get("/forecast")
+async def forecast(db: DbDep, current: CurrentUserDep) -> dict:
+    """Прогноз расходов на следующий месяц."""
+    return await reports.expense_forecast(db, current.family_id)
+
+
+@router.get("/insights")
+async def insights(
+    db: DbDep,
+    current: CurrentUserDep,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict:
+    """Автоматические текстовые инсайты по финансам."""
+    dt_from, dt_to = reports.period_bounds(date_from, date_to)
+    items = await reports.generate_insights(db, current.family_id, dt_from, dt_to)
+    return {"items": items}
