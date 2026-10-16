@@ -85,6 +85,7 @@ class ReceiptOut(ORMBase):
     mime_type: str
     size_bytes: int
     parse_status: ReceiptParseStatus
+    is_duplicate: bool = False
     store_name: str | None
     inn: str | None
     receipt_date: datetime | None
@@ -96,6 +97,7 @@ class ReceiptOut(ORMBase):
     items: list[ReceiptItemOut] = Field(default_factory=list)
     transaction_ids: list[uuid.UUID] = Field(default_factory=list)
     created_at: datetime
+    warning: str | None = None
 
 
 class ReceiptParseResult(ORMBase):

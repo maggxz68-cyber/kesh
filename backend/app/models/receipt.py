@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import UniqueConstraint
 
 from app.db.base import Base
 from app.models.enums import ReceiptParseStatus, enum_column
@@ -38,6 +39,9 @@ class Receipt(Base, TimestampMixin):
     """
 
     __tablename__ = "receipts"
+    __table_args__ = (
+        UniqueConstraint("fiscal_document_number", "fiscal_sign", name="uq_receipt_fn_fp"),
+    )
 
     id: Mapped[_uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=_uuid.uuid4)
     family_id: Mapped[_uuid.UUID] = mapped_column(
@@ -54,6 +58,7 @@ class Receipt(Base, TimestampMixin):
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Реквизиты (из QR ФНС или OCR)
+    is_duplicate: Mapped[bool] = mapped_column(default=False, server_default="false")
     parse_status: Mapped[ReceiptParseStatus] = mapped_column(
         enum_column(ReceiptParseStatus, "receipt_parse_status"),
         nullable=False,

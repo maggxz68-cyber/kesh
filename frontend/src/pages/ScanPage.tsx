@@ -55,7 +55,16 @@ export default function ScanPage() {
       fd.append('file', file);
       return api.upload<ReceiptOut>(`/receipts/upload?auto_parse=true`, fd);
     },
-    onSuccess: (r) => {
+    onSuccess: (r: any) => {
+      // ПРОВЕРКА НА ДУБЛИКАТ: если бэкенд вернул предупреждение, прерываем процесс
+      if (r.warning) {
+        alert(r.warning);
+        setFile(null);
+        setPreview(null);
+        setReceipt(null);
+        return; // ❌ Не создаем транзакцию и не показываем форму
+      }
+      
       setReceipt(r);
       qc.invalidateQueries({ queryKey: ['transactions'] });
       // Автоподстановка категории, если бэкенд её предложил

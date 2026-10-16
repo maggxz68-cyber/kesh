@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import FileResponse
 from loguru import logger
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import noload
 from sqlalchemy.orm.attributes import set_committed_value
@@ -317,6 +318,26 @@ async def upload_receipt(
     if auto_parse:
         try:
             await _parse_internal(db, r)
+        except IntegrityError:
+            # БД отклонила обновление из-за уникального индекса (дубликат fn+fp)
+            await db.rollback()
+            logger.info(f"✅ Дубликат отклонён БД: fn={r.fiscal_document_number}, fp={r.fiscal_sign}")
+            
+            from sqlalchemy.orm import selectinload
+            stmt = select(Receipt).where(
+                Receipt.fiscal_document_number == r.fiscal_document_number,
+                Receipt.fiscal_sign == r.fiscal_sign
+            ).options(
+                selectinload(Receipt.items),
+                selectinload(Receipt.transaction_links)
+            )
+            res = await db.execute(stmt)
+            fresh = res.scalar_one_or_none()
+            
+            if fresh:
+                out_obj = _to_out(fresh)
+                return out_obj.model_copy(update={"warning": "Этот чек уже был загружен ранее"})
+            raise RuntimeError("Не удалось найти существующий чек")
         except Exception as exc:  # noqa: BLE001 — распознавание не должно ломать загрузку
             logger.warning("Автопарсинг чека {} не удался: {}", r.id, str(exc), exc_info=True)
             try:
@@ -385,7 +406,7 @@ async def upload_receipt(
                 abs_path.unlink(missing_ok=True)
             except OSError:
                 pass
-            logger.error(f"Чек {r.id} не удалось сохранить: {exc2}", exc_info=True)
+            logger.error(f"Чек {r.id if r else 'UNKNOWN'} не удалось сохранить: {exc2}", exc_info=True)
             raise HTTPException(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 f"Ошибка сохранения чека: {exc2.__class__.__name__}: {str(exc2)[:200]}",
@@ -437,6 +458,18 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
             r.total_amount = p.sum2 if p.sum2 else (r.total_amount or Decimal("0"))
             r.fiscal_document_number = str(p.fd)
             r.fiscal_sign = p.fp
+            
+            # Проверка на дубликат по уникальным реквизитам
+            if p.fd and p.fp:
+                dup_check = await db.execute(
+                    select(Receipt).where(
+                        Receipt.fiscal_document_number == str(p.fd),
+                        Receipt.fiscal_sign == p.fp
+                    )
+                )
+                existing = dup_check.scalars().first()
+                if existing:
+                    raise ValueError("DUPLICATE_RECEIPT:" + str(existing.id))
             meta = dict(p.meta)
             meta["fn"] = p.fn
             meta["operation_type"] = p.operation_type
