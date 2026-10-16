@@ -30,6 +30,7 @@ from app.schemas.reports import ReceiptOut, ReceiptParseResult, ReceiptUpdate
 from app.services import fns, ocr, receipt_categorization
 from app.services.ofd_service import fetch_receipt_details
 from app.services.store_lookup import get_store_name_by_inn
+from app.services.item_categorization import categorize_item
 
 async def _refresh_noload(db, obj):
     """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations).
@@ -119,7 +120,7 @@ def _to_out(r: Receipt, include_payload: bool = False) -> ReceiptOut:
         "meta": r.meta,
         "items": [
             {"id": i.id, "name": i.name, "quantity": i.quantity, "price": i.price,
-             "total": i.total, "vat_rate": i.vat_rate}
+             "total": i.total, "vat_rate": i.vat_rate, "category_name": i.category_name}
             for i in (r.items or [])
         ],
         "transaction_ids": [l.transaction_id for l in (r.transaction_links or [])],
@@ -317,7 +318,7 @@ async def upload_receipt(
         try:
             await _parse_internal(db, r)
         except Exception as exc:  # noqa: BLE001 — распознавание не должно ломать загрузку
-            logger.warning(f"Автопарсинг чека {r.id} не удался: {exc}", exc_info=True)
+            logger.warning("Автопарсинг чека {} не удался: {}", r.id, str(exc), exc_info=True)
             try:
                 await db.rollback()
             except Exception:  # noqa: BLE001
@@ -453,7 +454,7 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                 if ocr_data.get('store_name') and not r.store_name:
                     r.store_name = ocr_data['store_name']
             except Exception as exc:
-                logger.warning(f"Минимальный OCR не удался: {exc}")
+                logger.warning("Минимальный OCR не удался: {}", str(exc))
             
             # Автокатегоризация по магазину/ИНН
             try:
@@ -464,7 +465,7 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                     meta["suggested_category_name"] = get_category_display_name(category)
                     logger.info(f"Автокатегория: {category} ({get_category_display_name(category)})")
             except Exception as exc:
-                logger.warning(f"Автокатегоризация не удалась: {exc}")
+                logger.warning("Автокатегоризация не удалась: {}", str(exc))
 
             # --- 🟢 НАЧАЛО: ИНТЕГРАЦИЯ OFD.RU ---
             ofd_data = await fetch_receipt_details(payload)
@@ -496,14 +497,17 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                         total_kopecks = it.get("Total", 0)
                         quantity = float(it.get("Quantity", 1.0))
 
+                        # Определяем категорию товара
+                        item_name = str(it.get("Name", "Товар"))[:500]
                         db.add(
                             ReceiptItem(
                                 receipt_id=r.id,
-                                name=str(it.get("Name", "Товар"))[:500],
+                                name=item_name,
                                 quantity=Decimal(str(quantity)),
                                 price=Decimal(str(price_kopecks)) / Decimal("100"),
                                 total=Decimal(str(total_kopecks)) / Decimal("100"),
                                 vat_rate=None,
+                                category_name=categorize_item(item_name),
                             )
                         )
                     await db.flush()
@@ -539,14 +543,16 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                     for old in await _reload_items(r):
                         await db.delete(old)
                     for it in check["items"]:
+                        item_name = str(it.get("name", ""))[:500]
                         db.add(
                             ReceiptItem(
                                 receipt_id=r.id,
-                                name=str(it.get("name", ""))[:500],
+                                name=item_name,
                                 quantity=Decimal(str(it.get("quantity", 1))),
                                 price=Decimal(str(it.get("price", 0))),
                                 total=Decimal(str(it.get("total", 0))),
                                 vat_rate=it.get("vat_rate"),
+                                category_name=categorize_item(item_name),
                             )
                         )
                     await db.flush()

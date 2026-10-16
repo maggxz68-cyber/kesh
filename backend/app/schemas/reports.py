@@ -72,6 +72,7 @@ class ReceiptItemOut(ORMBase):
     price: Decimal
     total: Decimal
     vat_rate: str | None = None
+    category_name: str | None = None
 
 
 class ReceiptLink(ORMBase):

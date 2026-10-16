@@ -104,6 +104,7 @@ class ReceiptItem(Base, TimestampMixin):
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False, default=Decimal("1"))
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
+    category_name: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="Категория товара")
     vat_rate: Mapped[str | None] = mapped_column(String(16))
 
     receipt: Mapped[Receipt] = relationship(back_populates="items", lazy="noload")
