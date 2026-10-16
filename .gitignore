@@ -22,3 +22,4 @@ e build --no-cache
 e down
 e up -d
 leep 15
+.env

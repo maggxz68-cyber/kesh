@@ -29,6 +29,7 @@ from app.models.transaction import Transaction
 from app.schemas.reports import ReceiptOut, ReceiptParseResult, ReceiptUpdate
 from app.services import fns, ocr, receipt_categorization
 from app.services.ofd_service import fetch_receipt_details
+from app.services.store_lookup import get_store_name_by_inn
 
 async def _refresh_noload(db, obj):
     """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations).
@@ -470,11 +471,17 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
             if ofd_data and "Document" in ofd_data:
                 doc = ofd_data["Document"]
                 
+                # Логируем ключевые поля OFD.ru для отладки
+                logger.info(f"OFD.ru Document поля: User='{doc.get('User')}', UserInn='{doc.get('UserInn')}', RetailPlaceAddress='{doc.get('RetailPlaceAddress')}'")
+                
                 # 1. Обогащаем данные чека из OFD, если их нет из OCR
                 if not r.inn and doc.get("UserInn"):
                     r.inn = str(doc.get("UserInn"))
                 if not r.store_name and doc.get("User"):
                     r.store_name = str(doc.get("User"))[:500]
+                # Fallback: если User пустой, пробуем RetailPlaceAddress
+                if not r.store_name and doc.get("RetailPlaceAddress"):
+                    r.store_name = str(doc.get("RetailPlaceAddress"))[:500]
 
                 # 2. Сохраняем товары из OFD.ru
                 items = doc.get("Items", [])
@@ -502,6 +509,18 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                     await db.flush()
                     logger.info(f"✅ Успешно загружено {len(items)} товаров из OFD.ru")
             # --- 🔴 КОНЕЦ: ИНТЕГРАЦИЯ OFD.RU ---
+
+            # Пытаемся определить название магазина по ИНН (приоритет над адресом кассы)
+            if r.inn:
+                try:
+                    store_from_inn = await get_store_name_by_inn(db, r.inn)
+                    if store_from_inn:
+                        # Если текущее имя похоже на адрес или пустое, заменяем его на название сети
+                        if not r.store_name or any(word in r.store_name.lower() for word in ["москва", "проспект", "улица", "шоссе", "бульвар", "г."]):
+                            r.store_name = store_from_inn
+                            logger.info(f"✅ Магазин переопределён по ИНН {r.inn}: {store_from_inn}")
+                except Exception as exc:
+                    logger.warning(f"Не удалось определить магазин по ИНН: {exc}")
 
             # 3. Проверка чека в ФНС (если ФНС вернет товары, они перезапишут данные OFD, что правильно)
             try:
