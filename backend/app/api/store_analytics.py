@@ -6,9 +6,9 @@ from pydantic import BaseModel
 
 from app.core.deps import DbDep, CurrentUser, get_current_user
 from app.models.transaction import Transaction
-from app.models.receipt import Receipt
+from app.models.receipt import Receipt, ReceiptTransaction
 
-router = APIRouter(prefix="/reports", tags=["Store Analytics"])
+router = APIRouter(prefix="", tags=["Store Analytics"])
 
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
 
@@ -25,14 +25,16 @@ async def get_store_spending(
     """Возвращает топ магазинов по сумме трат за указанный период."""
     since = datetime.utcnow() - timedelta(days=days)
     
+    # Правильный JOIN через промежуточную таблицу ReceiptTransaction (M:N связь)
     stmt = (
         select(
             Receipt.store_name,
             func.sum(Transaction.amount).label("total_spent")
         )
-        .join(Transaction, Transaction.receipt_id == Receipt.id)
+        .join(ReceiptTransaction, ReceiptTransaction.transaction_id == Transaction.id)
+        .join(Receipt, Receipt.id == ReceiptTransaction.receipt_id)
         .where(
-            Receipt.family_id == current.family_id,
+            Transaction.family_id == current.family_id,
             Transaction.type == "expense",
             Transaction.occurred_at >= since,
             Receipt.store_name.isnot(None),
@@ -40,7 +42,7 @@ async def get_store_spending(
         )
         .group_by(Receipt.store_name)
         .order_by(func.sum(Transaction.amount).desc())
-        .limit(10)
+        .limit(10)  # Топ-10 магазинов
     )
     
     result = await db.execute(stmt)

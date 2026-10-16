@@ -52,6 +52,7 @@ app.include_router(categories.router, prefix="/api/categories", tags=["categorie
 app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
 app.include_router(currencies.router, prefix="/api/currencies", tags=["currencies"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
+app.include_router(store_analytics.router, prefix="/api/reports", tags=["store-analytics"])
 app.include_router(recurring.router, prefix="/api/recurring", tags=["recurring"])
 
 @app.get("/api/health")
