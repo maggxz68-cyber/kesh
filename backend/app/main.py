@@ -11,6 +11,7 @@ from loguru import logger
 from app.api import (
     accounts,
     receipts,
+    store_analytics,
     auth,
     families,
     budgets,

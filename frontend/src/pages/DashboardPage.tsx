@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { Card, Skeleton, fmtMoney, EmptyState } from '../components/ui';
 import { PageTitle } from '../components/Layout';
+import { StoreSpendingChart } from '../components/StoreSpendingChart';
 
 interface Summary {
   income: number; expense: number; balance: number;
@@ -168,6 +169,11 @@ export default function DashboardPage() {
               </LineChart>
             </ResponsiveContainer>
           )}
+        </Card>
+
+        <Card className="p-4 lg:col-span-2">
+          <h3 className="mb-4 text-lg font-semibold">Топ магазинов за 30 дней</h3>
+          <StoreSpendingChart />
         </Card>
       </div>
     </>
