@@ -10,6 +10,7 @@ from loguru import logger
 
 from app.api import (
     accounts,
+    receipts,
     auth,
     families,
     budgets,
@@ -43,6 +44,7 @@ app.add_middleware(
 # Подключение роутеров (ВСЕГДА после создания app = FastAPI())
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
+app.include_router(receipts.router, prefix="/api/receipts", tags=["receipts"])
 app.include_router(families.router, prefix="/api/families", tags=["families"])
 app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
 app.include_router(categories.router, prefix="/api/categories", tags=["categories"])

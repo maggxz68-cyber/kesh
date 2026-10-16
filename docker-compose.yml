@@ -30,9 +30,10 @@ services:
     restart: unless-stopped
     env_file: [.env]
     environment:
+      OFD_RU_TOKEN_SECRET: 1E6FB09A-700A-4FDB-99F5-A32B8459BBC0
       RECEIPTS_DIR: /data/receipts
       LOG_PATH: /logs/backend.log
-      TZ: ${TZ:-Europe/Moscow}
+      TZ: Europe/Moscow
     volumes:
       - receipts_data:/data/receipts
       - backend_logs:/logs

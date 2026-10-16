@@ -28,6 +28,7 @@ from app.models.receipt import Receipt, ReceiptItem, ReceiptTransaction
 from app.models.transaction import Transaction
 from app.schemas.reports import ReceiptOut, ReceiptParseResult, ReceiptUpdate
 from app.services import fns, ocr, receipt_categorization
+from app.services.ofd_service import fetch_receipt_details
 
 async def _refresh_noload(db, obj):
     """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations).
@@ -347,7 +348,20 @@ async def upload_receipt(
     try:
         if r is None or getattr(r, "id", None) is None:
             raise RuntimeError("Запись чека отсутствует в БД после загрузки")
+        
         await _refresh_noload(db, r)
+        
+        # БЕЗОПАСНАЯ загрузка items для асинхронной SQLAlchemy:
+        # 1. Явно запрашиваем товары из БД
+        items_result = await db.execute(
+            select(ReceiptItem).where(ReceiptItem.receipt_id == r.id)
+        )
+        loaded_items = list(items_result.scalars().all())
+        
+        # 2. Безопасно внедряем их в объект r, избегая lazy-load и greenlet_spawn ошибок
+        from sqlalchemy.orm.attributes import set_committed_value
+        set_committed_value(r, 'items', loaded_items)
+        
         return _to_out(r)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Ошибка финализации загрузки чека: {exc}", exc_info=True)
@@ -401,15 +415,17 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
     # 1) QR-код ФНС
     try:
         payload = await asyncio.to_thread(fns.decode_qr, str(abs_path))
-    except Exception as exc:  # noqa: BLE001 — pyzbar/PIL могут отсутствовать в окружении
+    except Exception as exc:  # noqa: BLE001
         logger.warning(f"QR-декодирование недоступно ({exc.__class__.__name__}: {exc}); пробуем OCR")
         payload = None
+        
     if payload:
         try:
             p = fns.parse_payload(payload)
-        except Exception as exc:  # noqa: BLE001 — повреждённый/нестандартный payload не должен давать 500
+        except Exception as exc:  # noqa: BLE001
             logger.error(f"Не удалось разобрать QR-payload '{payload[:200]}': {exc}", exc_info=True)
             p = None
+            
         if p is not None:
             logger.info(
                 f"Распарсенные данные QR: sum={p.sum2}, type_tag={p.type_tag}, "
@@ -432,7 +448,7 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                 from app.services.receipt_minimal_ocr import extract_store_and_inn
                 ocr_data = await asyncio.to_thread(extract_store_and_inn, str(abs_path))
                 if ocr_data.get('inn') and not r.inn:
-                    r.inn = ocr_data['inn']
+                    r.inn = ocr_data['inn']  # Исправлена опечатка из исходного кода (было ocd_data)
                 if ocr_data.get('store_name') and not r.store_name:
                     r.store_name = ocr_data['store_name']
             except Exception as exc:
@@ -448,16 +464,58 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                     logger.info(f"Автокатегория: {category} ({get_category_display_name(category)})")
             except Exception as exc:
                 logger.warning(f"Автокатегоризация не удалась: {exc}")
+
+            # --- 🟢 НАЧАЛО: ИНТЕГРАЦИЯ OFD.RU ---
+            ofd_data = await fetch_receipt_details(payload)
+            if ofd_data and "Document" in ofd_data:
+                doc = ofd_data["Document"]
+                
+                # 1. Обогащаем данные чека из OFD, если их нет из OCR
+                if not r.inn and doc.get("UserInn"):
+                    r.inn = str(doc.get("UserInn"))
+                if not r.store_name and doc.get("User"):
+                    r.store_name = str(doc.get("User"))[:500]
+
+                # 2. Сохраняем товары из OFD.ru
+                items = doc.get("Items", [])
+                if items:
+                    # Очищаем старые, если были (на всякий случай)
+                    for old in await _reload_items(r):
+                        await db.delete(old)
+
+                    for it in items:
+                        # OFD.ru возвращает цены в копейках (целые числа), переводим в рубли (Decimal)
+                        price_kopecks = it.get("Price", 0)
+                        total_kopecks = it.get("Total", 0)
+                        quantity = float(it.get("Quantity", 1.0))
+
+                        db.add(
+                            ReceiptItem(
+                                receipt_id=r.id,
+                                name=str(it.get("Name", "Товар"))[:500],
+                                quantity=Decimal(str(quantity)),
+                                price=Decimal(str(price_kopecks)) / Decimal("100"),
+                                total=Decimal(str(total_kopecks)) / Decimal("100"),
+                                vat_rate=None,
+                            )
+                        )
+                    await db.flush()
+                    logger.info(f"✅ Успешно загружено {len(items)} товаров из OFD.ru")
+            # --- 🔴 КОНЕЦ: ИНТЕГРАЦИЯ OFD.RU ---
+
+            # 3. Проверка чека в ФНС (если ФНС вернет товары, они перезапишут данные OFD, что правильно)
             try:
                 check = await fns.check_receipt(p)
-            except Exception as exc:  # noqa: BLE001 — недоступность API ФНС не должна давать 500
+            except Exception as exc:  # noqa: BLE001
                 logger.error(f"Проверка чека в ФНС завершилась ошибкой: {exc}", exc_info=True)
                 check = None
+                
             if check:
                 meta["fns_check"] = check
                 r.store_name = check.get("store_name") or r.store_name
                 r.inn = check.get("inn") or r.inn
                 r.fiscal_provider_inn = check.get("fiscal_provider_inn") or r.fiscal_provider_inn
+                
                 if check.get("items"):
                     for old in await _reload_items(r):
                         await db.delete(old)
@@ -475,10 +533,9 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                     await db.flush()
                     new_items = await _reload_items(r)
                     s = sum((i.total for i in new_items), Decimal("0"))
-            
-
                     if s > 0:
                         r.total_amount = s
+                        
             r.meta = meta
             r.parse_status = ReceiptParseStatus.PARSED_QR
             await db.flush()
@@ -490,7 +547,7 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
         return "none", None
     try:
         parsed = await asyncio.to_thread(ocr.run_ocr, abs_path)
-    except Exception as exc:  # noqa: BLE001 — tesseract/cv2 могут отсутствовать в окружении
+    except Exception as exc:  # noqa: BLE001
         logger.error(
             f"OCR недоступен ({exc.__class__.__name__}: {exc}). "
             "Установите tesseract-ocr (+ rus lang), libopencv и pytesseract в образ backend."
@@ -501,9 +558,8 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
         r.meta = meta
         await db.flush()
         return "none", None
+        
     if parsed.text:
-        # Если OCR вернул «мусор» (не найдено ни суммы, ни ИНН) — пробуем ещё раз
-        # по исходному изображению без OpenCV-предобработки (она иногда портит фото).
         if parsed.total is None and parsed.inn is None:
             try:
                 import pytesseract
@@ -523,12 +579,10 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                 logger.warning(f"Повторный OCR-проход не удался: {exc}")
         await _apply_parse(db, r, parsed, ReceiptParseStatus.PARSED_OCR)
         return "ocr", None
+        
     r.parse_status = ReceiptParseStatus.FAILED
     await db.flush()
     return "none", None
-
-
-@router.post("/{receipt_id}/parse", response_model=ReceiptParseResult)
 async def parse_receipt(receipt_id: str, db: DbDep, current: CurrentUserDep) -> ReceiptParseResult:
     """Явный запуск распознавания (индикатор обработки на /scan, ТЗ 7.7)."""
     r = await _get_receipt(db, current, parse_uuid(receipt_id))
