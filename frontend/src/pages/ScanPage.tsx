@@ -75,7 +75,12 @@ export default function ScanPage() {
         }
       }
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: any) => {
+      const msg = e.response?.status === 413 
+        ? 'Фото слишком большое! Максимальный размер 20 МБ. Попробуйте сделать фото с меньшим разрешением или обрезать его.' 
+        : (e.response?.data?.detail || e.message || 'Ошибка загрузки');
+      setError(msg);
+    },
   });
 
   const linkTx = useMutation({
@@ -90,7 +95,12 @@ export default function ScanPage() {
         receipt_id: receipt!.id,
       }),
     onSuccess: () => { setReceipt(null); setFile(null); setPreview(null); qc.invalidateQueries({ queryKey: ['transactions'] }); },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: any) => {
+      const msg = e.response?.status === 413 
+        ? 'Фото слишком большое! Максимальный размер 20 МБ. Попробуйте сделать фото с меньшим разрешением или обрезать его.' 
+        : (e.response?.data?.detail || e.message || 'Ошибка загрузки');
+      setError(msg);
+    },
   });
 
   const receiptTotal = Number(receipt?.total_amount ?? (receipt?.items ?? []).reduce((a, i) => a + Number(i.total), 0) ?? 0);

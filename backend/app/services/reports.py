@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import calendar
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, timedelta, time, timezone
 from decimal import Decimal
 
 import sqlalchemy as sa
@@ -578,7 +578,7 @@ async def receipts_report(db: AsyncSession, family_id: uuid.UUID, dt_from: datet
     conds = [Receipt.family_id == family_id]
     date_cond = sa.and_(
         func.coalesce(Receipt.receipt_date, Receipt.created_at) >= dt_from,
-        func.coalesce(Receipt.receipt_date, Receipt.created_at) <= dt_to,
+        func.coalesce(Receipt.receipt_date, Receipt.created_at) < (dt_to + timedelta(days=1)),
     )
     row = (
         await db.execute(

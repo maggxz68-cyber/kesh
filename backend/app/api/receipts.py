@@ -1,3 +1,4 @@
+import tempfile
 """Чеки (ТЗ 7.4): загрузка, QR ФНС / OCR-распознавание, привязка M:N к транзакциям.
 
 Хранение файлов: settings.receipts_dir (в docker — volume /data/receipts), в БД — относительный путь.
@@ -32,6 +33,48 @@ from app.services import fns, ocr, receipt_categorization
 from app.services.ofd_service import fetch_receipt_details
 from app.services.store_lookup import get_store_name_by_inn
 from app.services.item_categorization import categorize_item
+
+# ==========================================
+# Умная нормализация названий магазинов
+# ==========================================
+STORE_NAME_ALIASES = {
+    "интернет решения": "Ozon",
+    "ооо интернет решения": "Ozon",
+    "интернет решения, ооо": "Ozon",
+    'общество с ограниченной ответственностью "интернет решения"': 'Ozon',
+    'общество с ограниченной ответственностью "интернет решения"': 'Ozon',
+    "www.ozon": "Ozon",
+    "ozon.ru": "Ozon",
+    "ozon": "Ozon",
+    "wildberries": "Wildberries",
+    "вайлдберриз": "Wildberries",
+    "яндекс маркет": "Яндекс Маркет",
+    "яндекс.маркет": "Яндекс Маркет",
+    "самокат": "Самокат",
+    "lavka": "Яндекс Лавка",
+    "пятерочка": "Пятёрочка",
+    "pyaterochka": "Пятёрочка",
+    "магнит": "Магнит",
+    "magnit": "Магнит",
+    "перекресток": "Перекрёсток",
+    "perekrestok": "Перекрёсток",
+    "лента": "Лента",
+    "lenta": "Лента",
+    "вкусвилл": "ВкусВилл",
+    "vkusvill": "ВкусВилл",
+}
+
+def normalize_store_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    name_lower = name.lower().strip()
+    for alias, clean_name in STORE_NAME_ALIASES.items():
+        if alias in name_lower:
+            return clean_name
+    return name
+# ==========================================
+
+
 
 async def _refresh_noload(db, obj):
     """Обновить scalar-поля объекта через Core SELECT (async-safe: без lazy-load relations).
@@ -288,6 +331,7 @@ async def upload_receipt(
 
     max_bytes = settings.max_upload_mb * 1024 * 1024
     content = await file.read()
+    logger.info(f"📥 Загружен файл: name={file.filename}, mime={mime}, guessed={guessed}, size={len(content)} bytes")
     if len(content) == 0:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Пустой файл")
     if len(content) > max_bytes:
@@ -318,26 +362,38 @@ async def upload_receipt(
     if auto_parse:
         try:
             await _parse_internal(db, r)
+        except ValueError as e:
+            # _parse_internal специально выбрасывает ValueError("DUPLICATE_RECEIPT:<id>") при дубликате
+            if str(e).startswith("DUPLICATE_RECEIPT:"):
+                existing_id = str(e).split(":")[1]
+                logger.warning(f"⚠️ Обнаружен дубликат чека. Существующий ID: {existing_id}")
+                
+                # Откатываем создание нового чека
+                await db.rollback()
+                
+                # Безопасно получаем существующий чек
+                from sqlalchemy.orm import selectinload
+                stmt = select(Receipt).where(Receipt.id == existing_id).options(
+                    selectinload(Receipt.items),
+                    selectinload(Receipt.transaction_links)
+                )
+                res = await db.execute(stmt)
+                fresh = res.scalar_one_or_none()
+                
+                if fresh:
+                    out_obj = _to_out(fresh)
+                    return out_obj.model_copy(update={"warning": "Этот чек уже был загружен ранее"})
+                else:
+                    raise HTTPException(status.HTTP_409_CONFLICT, "Чек уже существует, но не найден в БД")
+            else:
+                raise e # Пробрасываем другие ValueError
         except IntegrityError:
-            # БД отклонила обновление из-за уникального индекса (дубликат fn+fp)
-            await db.rollback()
-            logger.info(f"✅ Дубликат отклонён БД: fn={r.fiscal_document_number}, fp={r.fiscal_sign}")
-            
-            from sqlalchemy.orm import selectinload
-            stmt = select(Receipt).where(
-                Receipt.fiscal_document_number == r.fiscal_document_number,
-                Receipt.fiscal_sign == r.fiscal_sign
-            ).options(
-                selectinload(Receipt.items),
-                selectinload(Receipt.transaction_links)
+            # Дубликат - просто сообщаем клиенту
+            logger.info(f"✅ Дубликат чека: fn={r.fiscal_document_number}, fp={r.fiscal_sign}")
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, 
+                "Этот чек уже был загружен ранее"
             )
-            res = await db.execute(stmt)
-            fresh = res.scalar_one_or_none()
-            
-            if fresh:
-                out_obj = _to_out(fresh)
-                return out_obj.model_copy(update={"warning": "Этот чек уже был загружен ранее"})
-            raise RuntimeError("Не удалось найти существующий чек")
         except Exception as exc:  # noqa: BLE001 — распознавание не должно ломать загрузку
             logger.warning("Автопарсинг чека {} не удался: {}", r.id, str(exc), exc_info=True)
             try:
@@ -385,6 +441,7 @@ async def upload_receipt(
         from sqlalchemy.orm.attributes import set_committed_value
         set_committed_value(r, 'items', loaded_items)
         
+        r.store_name = normalize_store_name(r.store_name)
         return _to_out(r)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Ошибка финализации загрузки чека: {exc}", exc_info=True)
@@ -414,6 +471,9 @@ async def upload_receipt(
 
 
 async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
+    logger.info(f"🚀 НАЧАЛО _parse_internal для чека {r.id}, файл: {r.file_path}")
+    abs_path = _receipts_root() / r.file_path
+    logger.info(f"📁 Абсолютный путь: {abs_path}, существует: {abs_path.exists()}, размер: {abs_path.stat().st_size if abs_path.exists() else 0} bytes")
     """QR ФНС → fallback OCR. Возвращает (method, ответ проверки ФНС).
 
     Безопасно для async: связи r.items / r.transaction_links объявлены как
@@ -437,12 +497,44 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
 
     # 1) QR-код ФНС
     try:
-        payload = await asyncio.to_thread(fns.decode_qr, str(abs_path))
-    except Exception as exc:  # noqa: BLE001
+        logger.info("🔍 Пытаемся декодировать QR-код...")
+        
+        # 🎯 ПРОФЕССИОНАЛЬНАЯ ПРЕДОБРАБОТКА QR (как в мобильных сканерах)
+        qr_path = str(abs_path)
+        try:
+            from PIL import Image, ImageOps
+            import tempfile
+            
+            with Image.open(abs_path) as img:
+                # 1. Поворот по EXIF (чтобы не было боком)
+                img = ImageOps.exif_transpose(img)
+                
+                # 2. Перевод в оттенки серого (цвет = шум для zbar)
+                img = img.convert('L')
+                
+                # 3. Уменьшение размера. zbar ИДЕАЛЬНО работает на изображениях ~800-1000px
+                # На огромных фото с телефона он просто "теряет" мелкий QR-код
+                img.thumbnail((1000, 1000), Image.Resampling.LANCZOS)
+                
+                # 4. БИНАРИЗАЦИЯ (Магия!): Убирает тени, блики и шум бумаги.
+                # Все пиксели ярче 128 становятся белыми (255), темнее - чёрными (0).
+                img = img.point(lambda p: 255 if p > 128 else 0)
+                
+                # 5. Сохраняем в PNG (для идеальных чёрно-белых границ без JPEG-артефактов)
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    img.save(tmp.name, "PNG")
+                    qr_path = tmp.name
+                    logger.info(f"✅ QR-изображение оптимизировано: размер={img.size}, бинаризовано")
+        except Exception as prep_err:
+            logger.warning(f"⚠️ QR prep failed: {prep_err}")
+            
+        payload = await asyncio.to_thread(fns.decode_qr, qr_path)
+        logger.info(f"Результат decode_qr: {repr(payload)}")
+    except Exception as exc:
         logger.warning(f"QR-декодирование недоступно ({exc.__class__.__name__}: {exc}); пробуем OCR")
         payload = None
-        
     if payload:
+        logger.info("✅ QR-код найден, парсим payload...")
         try:
             p = fns.parse_payload(payload)
         except Exception as exc:  # noqa: BLE001
@@ -469,7 +561,10 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
                 )
                 existing = dup_check.scalars().first()
                 if existing:
-                    raise ValueError("DUPLICATE_RECEIPT:" + str(existing.id))
+                    # Не прерываем выполнение вручную. 
+                    # Позволим SQLAlchemy самой вызвать IntegrityError при попытке сохранить дубликат.
+                    # Это самый надежный и стандартный способ.
+                    pass
             meta = dict(p.meta)
             meta["fn"] = p.fn
             meta["operation_type"] = p.operation_type
@@ -600,17 +695,65 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
             return "qr", check
 
     # 2) OCR текстового чека (fallback)
+    logger.info("🚀 ДОШЛИ ДО FALLBACK OCR! Проверяем условия...")
     if r.mime_type == "application/pdf":
+        logger.info("📄 Это PDF, пропускаем OCR")
         r.parse_status = ReceiptParseStatus.RAW
         return "none", None
+        
+    logger.info(f"🔍 Запускаем OCR для файла: {abs_path} (размер: {abs_path.stat().st_size} bytes)")
+    
+    # 🛡️ БЕЗОПАСНАЯ ПРЕДОБРАБОТКА ДЛЯ МОБИЛЬНЫХ ФОТО (EXIF + Resize)
+    ocr_target_path = abs_path
     try:
-        parsed = await asyncio.to_thread(ocr.run_ocr, abs_path)
+        # Явный импорт внутри блока для 100% защиты от конфликтов имен в Python 3.12+
+        import PIL.Image as PILImage
+        import PIL.ImageOps as PILImageOps
+        import tempfile as tempfile_mod
+        
+        with PILImage.open(abs_path) as img:
+            # 1. Автоповорот по EXIF
+            img = PILImageOps.exif_transpose(img)
+            
+            # 2. Уменьшение размера
+            max_dim = 2000
+            if max(img.size) > max_dim:
+                ratio = max_dim / max(img.size)
+                new_size = tuple(int(dim * ratio) for dim in img.size)
+                img = img.resize(new_size, PILImage.Resampling.LANCZOS)
+            
+            # 3. Конвертация в оттенки серого
+            if img.mode != 'L':
+                img = img.convert('L')
+            
+            # 4. Повышение контраста для текста (метод Otsu для бинаризации)
+            import numpy as np
+            img_array = np.array(img)
+            # Простая бинаризация: пиксели темнее 128 -> 0 (чёрный), светлее -> 255 (белый)
+            img_array = np.where(img_array < 128, 0, 255).astype(np.uint8)
+            img = PILImage.fromarray(img_array)
+            logger.info("📝 Применена бинаризация (чёрно-белый текст)")
+                
+            # Сохраняем во временный файл для OCR
+            with tempfile_mod.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                img.save(tmp.name, 'PNG')
+                ocr_target_path = tmp.name
+                logger.info(f"🖼️ Изображение подготовлено: размер={img.size}, режим={img.mode}, путь={tmp.name}")
+    except Exception as prep_err:
+        logger.warning(f"⚠️ Не удалось подготовить изображение ({prep_err}), используем оригинал")
+        ocr_target_path = abs_path
+
+    try:
+        parsed = await asyncio.to_thread(ocr.run_ocr, ocr_target_path)
+        logger.info(f"✅ OCR завершился успешно! Результат: {repr(parsed)[:300] if parsed else 'Пусто'}...")
     except Exception as exc:  # noqa: BLE001
         logger.error(
-            f"OCR недоступен ({exc.__class__.__name__}: {exc}). "
-            "Установите tesseract-ocr (+ rus lang), libopencv и pytesseract в образ backend."
+            f"❌ КРИТИЧЕСКАЯ ОШИБКА OCR ({exc.__class__.__name__}: {exc}).",
+            exc_info=True  # <-- Это выведет полный стек вызовов в логи!
         )
         r.parse_status = ReceiptParseStatus.FAILED
+        await db.flush()
+        return "ocr_failed", None
         meta = dict(r.meta or {})
         meta["parse_error"] = f"{exc.__class__.__name__}: {str(exc)[:300]}"
         r.meta = meta
@@ -621,7 +764,7 @@ async def _parse_internal(db: DbDep, r: Receipt) -> tuple[str, dict | None]:
         if parsed.total is None and parsed.inn is None:
             try:
                 import pytesseract
-                from PIL import Image
+                from PIL import Image, ImageOps
 
                 with Image.open(str(abs_path)) as raw_im:
                     raw_text = await asyncio.to_thread(

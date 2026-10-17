@@ -52,3 +52,52 @@ async def superadmin_me(sa: SuperAdmin = Depends(get_current_superadmin)):
                      must_change_password=sa.must_change_password),
         family=None, csrf_token="",
     )
+
+@router.get("/metrics")
+async def get_superadmin_metrics(db: DbDep):
+    """Возвращает реальные метрики для панели супер-админа."""
+    from sqlalchemy import func, select
+    from app.models.family import Family, User
+    from app.models.transaction import Transaction
+    from app.models.receipt import Receipt
+    
+    # Считаем семьи
+    families_total = (await db.execute(select(func.count()).select_from(Family))).scalar() or 0
+    
+    # Считаем пользователей
+    users_total = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
+    
+    # Считаем транзакции
+    transactions_total = (await db.execute(select(func.count()).select_from(Transaction))).scalar() or 0
+    
+    # Считаем чеки
+    receipts_total = (await db.execute(select(func.count()).select_from(Receipt))).scalar() or 0
+    
+    # Считаем общий размер файлов чеков
+    receipts_volume_bytes = (await db.execute(select(func.sum(Receipt.size_bytes)))).scalar() or 0
+    
+    # Размер БД (в MB)
+    db_size = (await db.execute(select(func.pg_database_size('family_finance')))).scalar() or 0
+    db_size_mb = round(db_size / (1024 * 1024), 2)
+    
+    def format_size(size_bytes):
+        if not size_bytes:
+            return "0 B"
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.2f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.2f} TB"
+
+    return {
+        "families_total": families_total,
+        "families_active": families_total,
+        "families_blocked": 0,
+        "families_sandbox": 0,
+        "users_total": users_total,
+        "transactions_total": transactions_total,
+        "receipts_total": receipts_total,
+        "db_size": f"{db_size_mb} MB",
+        "receipts_volume_bytes": receipts_volume_bytes,
+        "receipts_volume_human": format_size(receipts_volume_bytes)
+    }

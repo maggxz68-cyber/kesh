@@ -1,10 +1,8 @@
 // Layout: сайдбар (сворачиваемый desktop / burger-drawer mobile), топбар, темы, демо-баннер.
 import { ReactNode, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard, ArrowLeftRight, Camera, Wallet, Tags, Target, BarChart3, TrendingUp, CreditCard, Users,
-  Settings, Moon, Sun, Menu, X, PanelTop, LogOut, ChevronLeft, ShieldCheck,
-} from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Camera, Wallet, Tags, Target, BarChart3, TrendingUp, CreditCard, Users,
+  Settings, Moon, Sun, Menu, X, PanelTop, LogOut, ChevronLeft, ShieldCheck, Table } from 'lucide-react';
 import { useAuth } from '../store/auth';
 import { useTheme } from '../hooks/useTheme';
 import { cn } from '../lib/cn';
@@ -17,6 +15,7 @@ const NAV = [
   { to: '/categories', label: 'Категории', icon: Tags },
   { to: '/budgets', label: 'Бюджеты', icon: Target },
   { to: '/reports', label: 'Отчёты', icon: BarChart3 },
+  { to: '/reports-detail', label: 'Детальные отчеты', icon: Table },
   { to: '/analytics', label: 'Аналитика', icon: TrendingUp },
   { to: '/subscriptions', label: 'Подписки', icon: CreditCard },
   { to: '/family', label: 'Семья', icon: Users },

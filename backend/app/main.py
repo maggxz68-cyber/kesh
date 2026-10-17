@@ -9,6 +9,9 @@ from app.core.middleware import CsrfExemptMiddleware
 from loguru import logger
 
 from app.api import (
+    imports,
+    superadmin_auth,
+    superadmin_families,
     accounts,
     receipts,
     store_analytics,
@@ -54,6 +57,9 @@ app.include_router(currencies.router, prefix="/api/currencies", tags=["currencie
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(store_analytics.router, prefix="/api/reports", tags=["store-analytics"])
 app.include_router(recurring.router, prefix="/api/recurring", tags=["recurring"])
+app.include_router(imports.router)
+app.include_router(superadmin_auth.router, prefix="/api/superadmin", tags=["superadmin"])
+app.include_router(superadmin_families.router, prefix="/api/superadmin", tags=["superadmin-families"])
 
 @app.get("/api/health")
 async def health_check():

@@ -1,4 +1,4 @@
-"""Сервис для парсинга банковских выписок (CSV, XLSX)."""
+"""Сервис для парсинга банковских выписок (CSV, XLSX, PDF)."""
 from __future__ import annotations
 
 import csv
@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 
 import openpyxl
 
+from app.services.parsers.tinkoff import TinkoffParser
+
 logger = logging.getLogger(__name__)
 
 # Возможные названия колонок (нижний регистр, без пробелов)
@@ -18,12 +20,12 @@ AMOUNT_COLUMNS = {"сумма", "amount", "sum", "суммаоперации", "
 DESC_COLUMNS = {"описание", "description", "назначение", "назначениеплатежа", "details", "комментарий", "comment", "получатель", "плательщик"}
 CATEGORY_COLUMNS = {"категория", "category", "mcc", " mcc "}
 
+
 def _normalize_header(h: str) -> str:
-    """Приводит заголовок к нижнему регистру и удаляет пробелы."""
     return h.lower().replace(" ", "").replace("_", "")
 
+
 def _parse_date(val: str) -> Optional[date]:
-    """Пытается распарсить дату из различных форматов."""
     if not val:
         return None
     val = val.strip()
@@ -38,26 +40,54 @@ def _parse_date(val: str) -> Optional[date]:
             continue
     return None
 
+
 def _parse_amount(val: str) -> Optional[Decimal]:
-    """Парсит сумму, заменяя запятые на точки и обрабатывая минусы."""
     if not val:
         return None
     val = str(val).strip().replace(" ", "").replace("\xa0", "").replace(",", ".")
-    # Убираем символы валют
     val = "".join(c for c in val if c.isdigit() or c in ".-")
     try:
         return Decimal(val)
     except InvalidOperation:
         return None
 
+
 def _find_column_index(headers: List[str], target_names: set) -> Optional[int]:
-    """Находит индекс колонки по возможным названиям."""
     norm_headers = [_normalize_header(h) for h in headers]
     for target in target_names:
         norm_target = _normalize_header(target)
         if norm_target in norm_headers:
             return norm_headers.index(norm_target)
     return None
+
+
+def parse_tinkoff_statement(file_content: bytes, filename: str) -> List[Dict[str, Any]]:
+    """Парсит выписку Т-Банка через умный парсер."""
+    try:
+        parser = TinkoffParser()
+        transactions = parser.parse(file_content, filename)
+        
+        if not transactions:
+            return []
+        
+        # Конвертируем в формат, который ожидает фронтенд
+        rows = []
+        for t in transactions:
+            rows.append({
+                "date": t.date.isoformat(),
+                "amount": t.amount,
+                "type": "income" if t.type.value == "income" else "expense",
+                "description": t.description,
+                "counterparty": t.counterparty or "",
+                "category_hint": t.category_hint or "",
+            })
+        
+        logger.info(f"✅ TinkoffParser распознал {len(rows)} транзакций из {filename}")
+        return rows
+    except Exception as e:
+        logger.warning(f"⚠️ TinkoffParser не справился с {filename}: {e}")
+        return []
+
 
 def parse_csv_file(file_content: bytes) -> List[Dict[str, Any]]:
     """Парсит CSV файл (пробует UTF-8, затем CP1251)."""
@@ -71,7 +101,6 @@ def parse_csv_file(file_content: bytes) -> List[Dict[str, Any]]:
     else:
         raise ValueError("Не удалось определить кодировку CSV файла. Попробуйте сохранить в UTF-8.")
 
-    # Пробуем разные разделители
     for delimiter in [",", ";", "\t"]:
         try:
             reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
@@ -85,7 +114,7 @@ def parse_csv_file(file_content: bytes) -> List[Dict[str, Any]]:
             idx_cat = _find_column_index(headers, CATEGORY_COLUMNS)
 
             if idx_date is None or idx_amount is None:
-                continue # Не те колонки, пробуем другой разделитель
+                continue
 
             for row in reader:
                 header_list = list(row.keys())
@@ -112,6 +141,7 @@ def parse_csv_file(file_content: bytes) -> List[Dict[str, Any]]:
             
     raise ValueError("Не удалось распарсить CSV. Проверьте формат и наличие колонок 'Дата' и 'Сумма'.")
 
+
 def parse_xlsx_file(file_content: bytes) -> List[Dict[str, Any]]:
     """Парсит XLSX файл."""
     rows = []
@@ -121,10 +151,8 @@ def parse_xlsx_file(file_content: bytes) -> List[Dict[str, Any]]:
         if not sheet:
             raise ValueError("Файл Excel пуст или не содержит активных листов.")
         
-        # Читаем первые 2 строки для определения заголовков
         header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
         if not header_row or not any(header_row):
-            # Иногда заголовки во второй строке
             header_row = next(sheet.iter_rows(min_row=2, max_row=2, values_only=True))
             
         headers = [str(h) if h is not None else "" for h in header_row]
@@ -138,7 +166,7 @@ def parse_xlsx_file(file_content: bytes) -> List[Dict[str, Any]]:
             raise ValueError(f"Не найдены обязательные колонки 'Дата' или 'Сумма'. Найдены: {', '.join(headers)}")
 
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            if not any(row): # Пустая строка
+            if not any(row):
                 continue
                 
             row_list = list(row)
@@ -162,11 +190,24 @@ def parse_xlsx_file(file_content: bytes) -> List[Dict[str, Any]]:
     except Exception as e:
         raise ValueError(f"Ошибка парсинга Excel: {str(e)}")
 
+
 def parse_statement(file_content: bytes, filename: str) -> List[Dict[str, Any]]:
-    """Определяет тип файла и вызывает соответствующий парсер."""
-    if filename.lower().endswith(".csv"):
+    """
+    Определяет тип файла и вызывает соответствующий парсер.
+    Сначала пробуем умный TinkoffParser, если не получилось — старый парсер.
+    """
+    filename_lower = filename.lower()
+    
+    # 1. Сначала пробуем умный парсер Т-Банка (для CSV и PDF)
+    if filename_lower.endswith(('.csv', '.pdf')):
+        tinkoff_rows = parse_tinkoff_statement(file_content, filename)
+        if tinkoff_rows:
+            return tinkoff_rows
+    
+    # 2. Fallback на старый парсер
+    if filename_lower.endswith(".csv"):
         return parse_csv_file(file_content)
-    elif filename.lower().endswith((".xlsx", ".xls")):
+    elif filename_lower.endswith((".xlsx", ".xls")):
         return parse_xlsx_file(file_content)
     else:
-        raise ValueError("Неподдерживаемый формат файла. Используйте CSV или XLSX.")
+        raise ValueError("Неподдерживаемый формат файла. Используйте CSV, XLSX или PDF.")

@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, PieChart as PieIcon, Wallet, Receipt, Calendar } from 'lucide-react';
 import { api } from '../api/client';
 import { Card, Skeleton, fmtMoney, EmptyState } from '../components/ui';
 import { PageTitle } from '../components/Layout';
 import PeriodFilter, { type PeriodValue } from '../components/PeriodFilter';
 
-const FALLBACK_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#ec4899', '#84cc16'];
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<PeriodValue>({
@@ -26,7 +25,6 @@ export default function AnalyticsPage() {
   // 4. Динамика по месяцам (6 мес)
   const byMonth = useQuery({ queryKey: ['by-month'], queryFn: () => api.get<{ items: any[] }>('/reports/by-month?months=6') });
   // 5. По категориям
-  const byCategory = useQuery({ queryKey: ['by-category', q], queryFn: () => api.get<{ items: any[] }>(`/reports/by-category?${q}&type=expense&top_n=8`) });
   // 6. По счетам
   const byAccount = useQuery({ queryKey: ['by-account', q], queryFn: () => api.get<{ items: any[] }>(`/reports/by-account?${q}`) });
   // 7. По чекам и магазинам
@@ -125,24 +123,6 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2 mb-6">
-        {/* --- 4. По категориям --- */}
-        <Card className="p-4">
-          <h3 className="mb-4 flex items-center gap-2 font-semibold"><PieIcon size={18} /> Топ расходов по категориям</h3>
-          {byCategory.isLoading ? <Skeleton className="h-64" /> : !byCategory.data?.items?.length ? (
-            <EmptyState title="Нет данных по категориям" />
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie data={byCategory.data.items} dataKey="amount" nameKey="category_name" outerRadius={100}>
-                  {byCategory.data.items.map((_, i) => (<Cell key={i} fill={byCategory.data.items[i].color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]} />))}
-                </Pie>
-                <Tooltip formatter={(v: number) => fmtMoney(v)} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-
         {/* --- 5. По счетам --- */}
         <Card className="p-4">
           <h3 className="mb-4 flex items-center gap-2 font-semibold"><Wallet size={18} /> Движение по счетам</h3>

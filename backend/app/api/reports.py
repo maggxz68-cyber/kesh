@@ -3,10 +3,15 @@ period, by-account, transactions (детальный), receipts."""
 from __future__ import annotations
 
 import uuid as uuid_mod
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select, func, and_, or_, desc, asc
+from sqlalchemy.orm import selectinload
+
+from app.models.transaction import Transaction
+from app.models.receipt import Receipt
 
 from app.core.deps import CurrentUser, DbDep, get_current_user
 from app.services import reports
@@ -207,3 +212,127 @@ async def insights(
     dt_from, dt_to = reports.period_bounds(date_from, date_to)
     items = await reports.generate_insights(db, current.family_id, dt_from, dt_to)
     return {"items": items}
+
+
+
+
+# ==============================================================================
+# ДЕТАЛЬНЫЕ ОТЧЕТЫ С ФИЛЬТРАМИ И ПАГИНАЦИЕЙ
+# ==============================================================================
+
+@router.get("/transactions-detail")
+async def transactions_detail(
+    db: DbDep,
+    current: CurrentUserDep,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    type: str | None = Query(None, pattern="^(income|expense|transfer)$"),
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    category_id: str | None = None,
+    account_id: str | None = None,
+    search: str | None = None,
+    sort_by: str = Query("occurred_at", regex="^(occurred_at|amount|created_at)$"),
+    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+):
+    """Детальный отчет по транзакциям с фильтрами."""
+    dt_from = datetime.combine(date_from, datetime.min.time()) if date_from else None
+    dt_to = datetime.combine(date_to, datetime.max.time()) if date_to else None
+
+    stmt = select(Transaction).where(Transaction.family_id == current.family_id, Transaction.deleted_at.is_(None))
+    count_stmt = select(func.count()).select_from(Transaction).where(Transaction.family_id == current.family_id, Transaction.deleted_at.is_(None))
+
+    if dt_from: stmt = stmt.where(Transaction.occurred_at >= dt_from); count_stmt = count_stmt.where(Transaction.occurred_at >= dt_from)
+    if dt_to: stmt = stmt.where(Transaction.occurred_at <= dt_to); count_stmt = count_stmt.where(Transaction.occurred_at <= dt_to)
+    if type: stmt = stmt.where(Transaction.type == type); count_stmt = count_stmt.where(Transaction.type == type)
+    if amount_min is not None: stmt = stmt.where(Transaction.amount >= amount_min); count_stmt = count_stmt.where(Transaction.amount >= amount_min)
+    if amount_max is not None: stmt = stmt.where(Transaction.amount <= amount_max); count_stmt = count_stmt.where(Transaction.amount <= amount_max)
+    if category_id: stmt = stmt.where(Transaction.category_id == category_id); count_stmt = count_stmt.where(Transaction.category_id == category_id)
+    if account_id: stmt = stmt.where(Transaction.account_id == account_id); count_stmt = count_stmt.where(Transaction.account_id == account_id)
+    if search:
+        search_filter = or_(Transaction.comment.ilike(f"%{search}%"))
+        stmt = stmt.where(search_filter); count_stmt = count_stmt.where(search_filter)
+
+    total = (await db.execute(count_stmt)).scalar() or 0
+    
+    order_col = getattr(Transaction, sort_by, Transaction.occurred_at)
+    stmt = stmt.order_by(desc(order_col) if sort_order == "desc" else asc(order_col))
+    
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size).options(
+        selectinload(Transaction.category), selectinload(Transaction.account), selectinload(Transaction.author)
+    )
+    
+    result = await db.execute(stmt)
+    items = []
+    for row in result.scalars():
+        items.append({
+            "id": str(row.id),
+            "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None,
+            "type": row.type.value,
+            "amount": float(row.amount),
+            "currency": row.currency,
+            "category_name": row.category.name if row.category else "Без категории",
+            "account_name": row.account.name if row.account else "Неизвестно",
+            "author_name": row.author.name if row.author else "Система",
+            "comment": row.comment or "",
+            "has_receipt": row.has_receipt,
+        })
+    
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/receipts-detail")
+async def receipts_detail(
+    db: DbDep,
+    current: CurrentUserDep,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    store_search: str | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    parse_status: str | None = None,
+    is_duplicate: bool | None = None,
+    sort_by: str = Query("receipt_date", regex="^(receipt_date|total_amount|created_at)$"),
+    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+):
+    """Детальный отчет по чекам с фильтрами."""
+    dt_from = datetime.combine(date_from, datetime.min.time()) if date_from else None
+    dt_to = datetime.combine(date_to, datetime.max.time()) if date_to else None
+
+    stmt = select(Receipt).where(Receipt.family_id == current.family_id)
+    count_stmt = select(func.count()).select_from(Receipt).where(Receipt.family_id == current.family_id)
+
+    if dt_from: stmt = stmt.where(Receipt.receipt_date >= dt_from); count_stmt = count_stmt.where(Receipt.receipt_date >= dt_from)
+    if dt_to: stmt = stmt.where(Receipt.receipt_date <= dt_to); count_stmt = count_stmt.where(Receipt.receipt_date <= dt_to)
+    if amount_min is not None: stmt = stmt.where(Receipt.total_amount >= amount_min); count_stmt = count_stmt.where(Receipt.total_amount >= amount_min)
+    if amount_max is not None: stmt = stmt.where(Receipt.total_amount <= amount_max); count_stmt = count_stmt.where(Receipt.total_amount <= amount_max)
+    if parse_status: stmt = stmt.where(Receipt.parse_status == parse_status); count_stmt = count_stmt.where(Receipt.parse_status == parse_status)
+    if is_duplicate is not None: stmt = stmt.where(Receipt.is_duplicate == is_duplicate); count_stmt = count_stmt.where(Receipt.is_duplicate == is_duplicate)
+    if store_search:
+        search_filter = or_(Receipt.store_name.ilike(f"%{store_search}%"), Receipt.ocr_text.ilike(f"%{store_search}%"))
+        stmt = stmt.where(search_filter); count_stmt = count_stmt.where(search_filter)
+
+    total = (await db.execute(count_stmt)).scalar() or 0
+    
+    order_col = getattr(Receipt, sort_by, Receipt.receipt_date)
+    stmt = stmt.order_by(desc(order_col) if sort_order == "desc" else asc(order_col))
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    
+    result = await db.execute(stmt)
+    items = []
+    for row in result.scalars():
+        items.append({
+            "id": str(row.id),
+            "receipt_date": row.receipt_date.isoformat() if row.receipt_date else None,
+            "store_name": row.store_name or "Неизвестный магазин",
+            "total_amount": float(row.total_amount) if row.total_amount else 0.0,
+            "parse_status": row.parse_status.value,
+            "is_duplicate": row.is_duplicate,
+            "original_name": row.original_name,
+        })
+    
+    return {"items": items, "total": total, "page": page, "page_size": page_size}

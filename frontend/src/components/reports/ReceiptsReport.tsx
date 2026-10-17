@@ -2,10 +2,11 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import PeriodFilter, { type PeriodValue } from '../PeriodFilter';
-import { Card, Skeleton, EmptyState, fmtMoney, fmtDate } from '../ui';
+import { Card, Skeleton, EmptyState, fmtMoney, fmtDate, Button } from '../ui';
+import { Trash2 } from 'lucide-react';
 
 interface ReceiptRow {
   id: string;
@@ -21,6 +22,18 @@ export default function ReceiptsReport() {
   const [period, setPeriod] = useState<PeriodValue>({
     date_from: sp.get('date_from') ?? '',
     date_to: sp.get('date_to') ?? '',
+  });
+  
+  const qc = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.del(`/receipts/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['report-receipts', period] });
+    },
+    onError: (e: any) => {
+      alert('Ошибка при удалении: ' + (e.response?.data?.detail || e.message || 'Неизвестная ошибка'));
+    }
   });
 
   const { data, isLoading, isError } = useQuery({
@@ -65,7 +78,7 @@ export default function ReceiptsReport() {
             <table className="w-full min-w-[560px] text-sm">
               <thead>
                 <tr className="border-b text-left text-slate-500">
-                  <th className="py-1">Дата</th><th>Магазин</th><th>ИНН</th><th>Сумма</th><th>Статус</th>
+                  <th className="py-1">Дата</th><th>Магазин</th><th>ИНН</th><th>Сумма</th><th>Статус</th><th className="w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -76,6 +89,22 @@ export default function ReceiptsReport() {
                     <td>{r.inn ?? '—'}</td>
                     <td className="font-medium">{fmtMoney(Number(r.total_amount))}</td>
                     <td>{r.parse_status}</td>
+                    <td>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 h-8 w-8"
+                        onClick={() => {
+                          if (window.confirm('Вы уверены, что хотите удалить этот чек? Это действие нельзя отменить.')) {
+                            deleteMutation.mutate(r.id);
+                          }
+                        }}
+                        disabled={deleteMutation.isPending}
+                        title="Удалить чек"
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

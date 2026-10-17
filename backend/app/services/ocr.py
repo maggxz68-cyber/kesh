@@ -88,10 +88,25 @@ def parse_ocr_text(text: str) -> OcrResult:
     if not lines:
         return res
 
-    # 1. ИНН
-    inn_m = _INN_RE.search(text)
+    # 1. ИНН (ищем именно рядом со словом ИНН, или первые 10/12 цифр)
+    inn_m = re.search(r'ИНН[:\s]*(\d{10}|\d{12})', text)
     if inn_m:
         res.inn = inn_m.group(1)
+    else:
+        inn_m = _INN_RE.search(text)
+        if inn_m:
+            res.inn = inn_m.group(1)
+            
+    # 3. Название магазина (ищем ООО, ИП или известные паттерны)
+    shop_m = re.search(r"(.{3,40}?)\s*,\s*(ООО|ИП|АО)", text, re.IGNORECASE)
+    if shop_m:
+        res.store_name = shop_m.group(0).strip()
+    else:
+        # Fallback: ищем просто ООО или ИП в начале строки
+        for ln in lines[:15]:
+            if re.search(r'\b(ООО|ИП|АО)\b', ln, re.IGNORECASE) and len(ln) > 5:
+                res.store_name = ln.strip()
+                break
 
     # 2. Дата
     for ln in lines[:15]:

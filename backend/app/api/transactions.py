@@ -438,7 +438,7 @@ async def commit_import(
         tx = Transaction(
             family_id=current.family_id,
             account_id=account_id,
-            occurred_at=datetime.strptime(item.date, "%Y-%m-%d"),
+            occurred_at=datetime.fromisoformat(item.date) if isinstance(item.date, str) else item.date,
             type=tx_type,
             amount=abs_amount,
             comment=item.description or None,
